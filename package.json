@@ -1,0 +1,54 @@
+{
+  "name": "diter",
+  "productName": "Diter",
+  "version": "0.1.0",
+  "description": "Diter · 跨平台 USB 启动盘写入工具（Windows / macOS / Linux）",
+  "main": "electron/main.js",
+  "author": "Diter",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "build": "node build/bundle.mjs",
+    "preview": "node build/bundle.mjs --preview",
+    "start": "node build/bundle.mjs && electron .",
+    "dev": "node build/bundle.mjs --watch",
+    "package": "bash build/package.sh",
+    "dist:mac": "node build/bundle.mjs && electron-builder --mac",
+    "dist:win": "node build/bundle.mjs && electron-builder --win",
+    "dist:linux": "node build/bundle.mjs && electron-builder --linux"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "dev.diter.usb",
+    "productName": "Diter",
+    "directories": { "output": "release", "buildResources": "assets" },
+    "files": ["electron/**/*", "dist/**/*", "package.json"],
+    "extraResources": [
+      { "from": "assets/bin/${os}", "to": "bin", "filter": ["**/*"] }
+    ],
+    "mac": {
+      "category": "public.app-category.utilities",
+      "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
+      "minimumSystemVersion": "10.13",
+      "hardenedRuntime": false,
+      "entitlements": "assets/entitlements.mac.plist",
+      "extendInfo": { "NSRemovableVolumesUsageDescription": "Diter 需要访问可移动磁盘以写入启动盘。" }
+    },
+    "win": {
+      "target": [{ "target": "nsis", "arch": ["x64", "ia32", "arm64"] }],
+      "requestedExecutionLevel": "asInvoker"
+    },
+    "linux": {
+      "target": ["AppImage", "deb"],
+      "category": "Utility"
+    }
+  }
+}

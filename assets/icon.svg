@@ -1,0 +1,23 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1e232e"/>
+      <stop offset="1" stop-color="#0b0d12"/>
+    </linearGradient>
+    <linearGradient id="ember" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff8a4a"/>
+      <stop offset="1" stop-color="#ff5a2b"/>
+    </linearGradient>
+  </defs>
+  <!-- 背景圆角矩形：四角透明（带 alpha），由系统据此做圆角遮罩 -->
+  <rect x="0" y="0" width="1024" height="1024" rx="220" fill="url(#bg)"/>
+  <!-- 磁盘外壳 -->
+  <rect x="196" y="322" width="632" height="380" rx="62" fill="#12151c" stroke="#e9eef7" stroke-width="46"/>
+  <!-- 状态灯 -->
+  <circle cx="304" cy="512" r="46" fill="#35d39b"/>
+  <!-- 盘片 -->
+  <circle cx="694" cy="512" r="90" fill="#12151c" stroke="#e9eef7" stroke-width="46"/>
+  <circle cx="694" cy="512" r="30" fill="url(#ember)"/>
+  <!-- 底部标签 -->
+  <line x1="384" y1="616" x2="568" y2="616" stroke="#8a95a7" stroke-width="42" stroke-linecap="round"/>
+</svg>
