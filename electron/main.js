@@ -1,5 +1,5 @@
 'use strict';
-const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, shell, nativeTheme, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 
@@ -101,6 +101,73 @@ function broadcast(e) {
   }
 }
 
+/* ----------------------------- 菜单 / 语言 ----------------------------- */
+
+const configPath = () => path.join(app.getPath('userData'), 'config.json');
+
+function loadLanguage() {
+  try {
+    const c = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
+    if (c.language === 'zh' || c.language === 'en') return c.language;
+  } catch {}
+  return 'zh';
+}
+
+function saveLanguage(lang) {
+  try {
+    fs.mkdirSync(path.dirname(configPath()), { recursive: true });
+    fs.writeFileSync(configPath(), JSON.stringify({ language: lang }));
+  } catch {}
+}
+
+function sendToWin(channel) {
+  if (win && !win.isDestroyed()) win.webContents.send(channel);
+}
+
+/** 应用菜单：macOS 在系统菜单栏，Windows/Linux 在窗口顶部菜单栏 */
+function buildMenu(lang) {
+  const L = (zh, en) => (lang === 'zh' ? zh : en);
+  const isMac = process.platform === 'darwin';
+  const openSettings = () => sendToWin('diter:open-settings');
+  const openAbout = () => sendToWin('diter:open-about');
+
+  const template = [
+    ...(isMac
+      ? [
+          {
+            label: 'Diter',
+            submenu: [
+              { label: L('关于 Diter', 'About Diter'), click: openAbout },
+              { type: 'separator' },
+              { label: L('设置…', 'Settings…'), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { type: 'separator' },
+              { role: 'hide', label: L('隐藏 Diter', 'Hide Diter') },
+              { role: 'hideOthers', label: L('隐藏其他', 'Hide Others') },
+              { role: 'unhide', label: L('全部显示', 'Show All') },
+              { type: 'separator' },
+              { role: 'quit', label: L('退出 Diter', 'Quit Diter') },
+            ],
+          },
+        ]
+      : [
+          {
+            label: L('文件', 'File'),
+            submenu: [
+              { label: L('设置…', 'Settings…'), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { type: 'separator' },
+              { role: 'quit', label: L('退出', 'Exit') },
+            ],
+          },
+        ]),
+    {
+      label: L('帮助', 'Help'),
+      submenu: [{ label: L('关于 Diter', 'About Diter'), click: openAbout }],
+    },
+  ];
+
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
 // 本地（主进程内）执行的写入任务 id —— cancel 时要区分走 writer 还是 helper
 const localJobs = new Set();
 
@@ -141,6 +208,7 @@ if (elevation.isHelper()) {
 
     app.whenReady().then(() => {
       nativeTheme.themeSource = 'light';
+      buildMenu(loadLanguage());
       createWindow();
       helper.setEventHandler(onAnyEvent);
       app.on('activate', () => {
@@ -170,7 +238,17 @@ ipcMain.handle('diter:boot', async () => ({
   elevated: (await elevation.isElevated()) || (await helper.ping()),
   elevatedByArg: elevation.isHelper(),
   electron: process.versions.electron,
+  language: loadLanguage(),
 }));
+
+ipcMain.handle('diter:get-language', () => loadLanguage());
+
+ipcMain.handle('diter:set-language', (_e, lang) => {
+  const l = lang === 'en' ? 'en' : 'zh';
+  saveLanguage(l);
+  buildMenu(l);
+  return l;
+});
 
 ipcMain.handle('diter:devices', async (_e, opts = {}) => {
   return devices.list({ imageSize: opts.imageSize || 0, allowUnknownBus: !!opts.allowUnknownBus });

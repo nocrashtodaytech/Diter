@@ -13,8 +13,9 @@
  *   大文件   —— install.wim > 4GB 时用 wimlib-imagex 拆成 install.swm，保住 FAT32。
  */
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
-const { run, waitMountPoint } = require('../util');
+const { run, waitMountPoint, RateMeter } = require('../util');
 const { spawnStep, hasCommand } = require('./spawn');
 
 const WIM_LIMIT = 3.9 * 1024 * 1024 * 1024;
@@ -122,38 +123,46 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
   const entries = walk(srcRoot);
   const total = entries.reduce((s, e) => s + e.size, 0);
   let done = 0;
+  const meter = new RateMeter(8000);
+  let lastEmit = 0;
   const dirs = entries.filter((e) => e.dir).sort((a, b) => a.rel.length - b.rel.length);
-  for (const d of dirs) fs.mkdirSync(path.join(dstRoot, d.rel), { recursive: true });
+  for (const d of dirs) await fsp.mkdir(path.join(dstRoot, d.rel), { recursive: true });
 
-  const buf = Buffer.allocUnsafe(4 * 1024 * 1024);
+  // 异步 I/O：走 libuv 线程池，避免同步循环阻塞事件循环（否则进度事件发不出去、UI 冻结）
+  const buf = Buffer.allocUnsafe(64 * 1024 * 1024);
   for (const e of entries) {
     if (e.dir) continue;
     if (skip.has(e.rel.split(path.sep).join('/').toLowerCase())) continue;
     if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
     const dst = path.join(dstRoot, e.rel);
-    fs.mkdirSync(path.dirname(dst), { recursive: true });
-    const inFd = fs.openSync(path.join(srcRoot, e.rel), 'r');
-    const outFd = fs.openSync(dst, 'w');
+    await fsp.mkdir(path.dirname(dst), { recursive: true });
+    const inFd = await fsp.open(path.join(srcRoot, e.rel), 'r');
+    const outFd = await fsp.open(dst, 'w');
     try {
       let read = 0;
       while (read < e.size) {
-        const got = fs.readSync(inFd, buf, 0, Math.min(buf.length, e.size - read), read);
-        if (got <= 0) break;
+        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        const { bytesRead } = await inFd.read(buf, 0, Math.min(buf.length, e.size - read), read);
+        if (bytesRead <= 0) break;
         let off = 0;
-        while (off < got) off += fs.writeSync(outFd, buf, off, got - off, read + off);
-        read += got;
-        done += got;
-        onBytes?.(done, total);
+        while (off < bytesRead) {
+          const { bytesWritten } = await outFd.write(buf, off, bytesRead - off, read + off);
+          if (bytesWritten <= 0) throw Object.assign(new Error('写入目标失败，设备可能已断开'), { code: 'EIO' });
+          off += bytesWritten;
+        }
+        read += bytesRead;
+        done += bytesRead;
+        const now = Date.now();
+        if (now - lastEmit >= 200) {
+          lastEmit = now;
+          onBytes?.(done, total, meter.push(done, now));
+        }
       }
     } finally {
-      fs.closeSync(inFd);
-      fs.closeSync(outFd);
+      await inFd.close();
+      await outFd.close();
     }
-    // 保留时间戳
-    try {
-      const st = fs.statSync(path.join(srcRoot, e.rel));
-      fs.utimesSync(dst, st.atime, st.mtime);
-    } catch {}
+    // 启动盘无需保留源文件时间戳，跳过 utimesSync（在 FAT32 上可能显著拖慢拷贝）
   }
   return { files: entries.length, bytes: total };
 }
@@ -246,7 +255,7 @@ async function write(ctx) {
         emit,
         signal,
         skip,
-        onBytes: (done, total) => {
+        onBytes: (done, total, speed) => {
           const p = total > 0 ? done / total : 0;
           emit({
             pct: 0.14 + p * 0.78,
@@ -254,6 +263,8 @@ async function write(ctx) {
             message: `复制 ${(done / 1073741824).toFixed(2)} / ${(total / 1073741824).toFixed(2)} GB`,
             bytesWritten: done,
             totalBytes: total,
+            speed,
+            eta: speed > 0 ? (total - done) / speed : 0,
           });
         },
       });

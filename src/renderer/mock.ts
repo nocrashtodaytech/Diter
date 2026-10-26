@@ -104,11 +104,13 @@ export function createMock(): DiterApi {
   let listeners = new Set<(e: JobEvent) => void>();
   const emit = (e: JobEvent) => listeners.forEach((fn) => fn(e));
   let timer: any = null;
+  const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>() };
+  let mockLang: 'zh' | 'en' = 'zh';
 
   return {
     isDesktop: false,
     async boot() {
-      return { version: '0.1.0', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview' };
+      return { version: '1.0.0', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview', language: mockLang };
     },
     async listDevices() {
       const list = devices();
@@ -208,12 +210,27 @@ export function createMock(): DiterApi {
     async openExternal(url: string) {
       window.open(url, '_blank');
     },
+    async getLanguage() {
+      return mockLang;
+    },
+    async setLanguage(lang: 'zh' | 'en') {
+      mockLang = lang;
+      return lang;
+    },
     pathForFile(file: File) {
       return `mock:///${file.name}`;
     },
     onEvent(cb) {
       listeners.add(cb);
       return () => listeners.delete(cb);
+    },
+    onOpenSettings(cb) {
+      panelListeners.settings.add(cb);
+      return () => panelListeners.settings.delete(cb);
+    },
+    onOpenAbout(cb) {
+      panelListeners.about.add(cb);
+      return () => panelListeners.about.delete(cb);
     },
   };
 }

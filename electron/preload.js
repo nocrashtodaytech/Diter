@@ -17,6 +17,11 @@ ipcRenderer.on('diter:event', (_e, payload) => {
   });
 });
 
+// 菜单触发打开设置/关于面板
+const panelListeners = { settings: new Set(), about: new Set() };
+ipcRenderer.on('diter:open-settings', () => panelListeners.settings.forEach((fn) => { try { fn(); } catch {} }));
+ipcRenderer.on('diter:open-about', () => panelListeners.about.forEach((fn) => { try { fn(); } catch {} }));
+
 contextBridge.exposeInMainWorld('diter', {
   boot: () => ipcRenderer.invoke('diter:boot'),
   listDevices: (opts) => ipcRenderer.invoke('diter:devices', opts),
@@ -29,6 +34,8 @@ contextBridge.exposeInMainWorld('diter', {
   assertWritable: (p) => ipcRenderer.invoke('diter:assert-writable', p),
   reveal: (p) => ipcRenderer.invoke('diter:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('diter:open-external', url),
+  getLanguage: () => ipcRenderer.invoke('diter:get-language'),
+  setLanguage: (lang) => ipcRenderer.invoke('diter:set-language', lang),
   pathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);
@@ -39,6 +46,14 @@ contextBridge.exposeInMainWorld('diter', {
   onEvent: (cb) => {
     listeners.add(cb);
     return () => listeners.delete(cb);
+  },
+  onOpenSettings: (cb) => {
+    panelListeners.settings.add(cb);
+    return () => panelListeners.settings.delete(cb);
+  },
+  onOpenAbout: (cb) => {
+    panelListeners.about.add(cb);
+    return () => panelListeners.about.delete(cb);
   },
   isDesktop: true,
 });

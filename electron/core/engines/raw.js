@@ -4,21 +4,21 @@
  * 不调用 dd，直接以 Node 读写设备节点 —— 这样才有精确进度、可取消、可限速。
  *
  * macOS 用 /dev/rdiskN（字符设备，绕过缓冲区），Linux 用 /dev/sdX。
+ *
+ * 关键：写入循环使用异步 I/O（fs.promises，走 libuv 线程池）。若用同步
+ * readSync/writeSync，整段循环会阻塞事件循环 —— 在 root 助手进程里会导致进度事件
+ * 无法经 socket 发出（前端速率一直 0、进度卡死），主进程里则会冻结 UI。
  */
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
-const { RateMeter, throttle } = require('../util');
+const { RateMeter } = require('../util');
 
-const CHUNK = 8 * 1024 * 1024;
+const CHUNK = 64 * 1024 * 1024;
 // 原始设备按 4096 字节块对齐（macOS rdisk / 现代 SSD 的物理块大小）
 const ALIGN = 4096;
-
-function openTarget(node) {
-  // 用 r+ 而非 w，避免部分平台对块设备 O_TRUNC 的额外副作用
-  return fs.openSync(node, 'r+');
-}
 
 /**
  * @param {{sourcePath:string,targetNode:string,totalBytes:number,onProgress:Function,signal:AbortSignal}} o
@@ -26,12 +26,13 @@ function openTarget(node) {
 async function writeRaw(o) {
   const { sourcePath, targetNode, onProgress, signal } = o;
   const total = o.totalBytes || fs.statSync(sourcePath).size;
-  const src = fs.openSync(sourcePath, 'r');
+  const src = await fsp.open(sourcePath, 'r');
   let dst;
   try {
-    dst = openTarget(targetNode);
+    // 用 r+ 而非 w，避免部分平台对块设备 O_TRUNC 的额外副作用
+    dst = await fsp.open(targetNode, 'r+');
   } catch (e) {
-    fs.closeSync(src);
+    await src.close();
     const hint =
       e.code === 'EACCES' || e.code === 'EPERM'
         ? '权限不足，需要管理员权限'
@@ -43,7 +44,7 @@ async function writeRaw(o) {
     throw err;
   }
 
-  const meter = new RateMeter(3000);
+  const meter = new RateMeter(8000);
   const started = Date.now();
   const buf = Buffer.allocUnsafe(CHUNK);
   let written = 0;
@@ -67,28 +68,33 @@ async function writeRaw(o) {
         throw err;
       }
       const want = Math.min(CHUNK, total - written);
-      const got = fs.readSync(src, buf, 0, want, written);
-      if (got <= 0) break;
+      const { bytesRead } = await src.read(buf, 0, want, written);
+      if (bytesRead <= 0) break;
 
       // 最后一块若不足 4096 字节，补齐到块边界再写（原始设备不接受非对齐写入）
-      const isLast = written + got >= total;
       let data = buf;
-      let toWrite = got;
-      if (isLast && got % ALIGN !== 0) {
-        const padded = Buffer.alloc(Math.ceil(got / ALIGN) * ALIGN);
-        buf.copy(padded, 0, 0, got);
+      let toWrite = bytesRead;
+      if (written + bytesRead >= total && bytesRead % ALIGN !== 0) {
+        const padded = Buffer.alloc(Math.ceil(bytesRead / ALIGN) * ALIGN);
+        buf.copy(padded, 0, 0, bytesRead);
         data = padded;
         toWrite = padded.length;
       }
 
       let off = 0;
       while (off < toWrite) {
-        off += fs.writeSync(dst, data, off, toWrite - off, written + off);
+        const { bytesWritten } = await dst.write(data, off, toWrite - off, written + off);
+        if (bytesWritten <= 0) {
+          const err = new Error('写入返回 0 字节，设备可能已断开');
+          err.code = 'EIO';
+          throw err;
+        }
+        off += bytesWritten;
       }
-      written += got;
+      written += bytesRead;
       emit(false);
     }
-    fs.fsyncSync(dst);
+    await dst.sync();
     emit(true);
     return { bytesWritten: written, elapsedSec: (Date.now() - started) / 1000 };
   } catch (e) {
@@ -107,17 +113,16 @@ async function writeRaw(o) {
       if (hint) {
         e.message = hint;
       } else if (!e.message || /^[A-Z]+:/.test(e.message)) {
-        // 未匹配到的 errno / 空消息，附上已写进度与原始信息便于定位
         e.message = `写入 ${Math.floor(written / 1048576)} MB 后失败（${e.code}）：${e.message || '未知错误'}`;
       }
     }
     throw e;
   } finally {
     try {
-      fs.closeSync(dst);
+      await dst.close();
     } catch {}
     try {
-      fs.closeSync(src);
+      await src.close();
     } catch {}
   }
 }
@@ -136,30 +141,20 @@ function cacheKey(p) {
     .digest('hex');
 }
 
-function hashFd(fd, total, offset, signal, onTick) {
-  return new Promise((resolve, reject) => {
-    const h = crypto.createHash('sha256');
-    const buf = Buffer.allocUnsafe(CHUNK);
-    let read = 0;
-    const step = () => {
-      try {
-        while (read < total) {
-          if (signal?.aborted) return reject(Object.assign(new Error('用户已取消'), { code: 'CANCELLED' }));
-          const want = Math.min(CHUNK, total - read);
-          const got = fs.readSync(fd, buf, 0, want, offset + read);
-          if (got <= 0) break;
-          h.update(buf.subarray(0, got));
-          read += got;
-          if (read % (256 * 1024 * 1024) < CHUNK) onTick?.(read);
-        }
-        resolve(h.digest('hex'));
-      } catch (e) {
-        reject(e);
-      }
-    };
-    // 让出事件循环，避免阻塞主进程
-    setTimeout(step, 0);
-  });
+async function hashFd(fd, total, offset, signal, onTick) {
+  const h = crypto.createHash('sha256');
+  const buf = Buffer.allocUnsafe(CHUNK);
+  let read = 0;
+  while (read < total) {
+    if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+    const want = Math.min(CHUNK, total - read);
+    const { bytesRead } = await fd.read(buf, 0, want, offset + read);
+    if (bytesRead <= 0) break;
+    h.update(buf.subarray(0, bytesRead));
+    read += bytesRead;
+    onTick?.(read);
+  }
+  return h.digest('hex');
 }
 
 async function sha256File(filePath, { signal, onProgress } = {}) {
@@ -173,7 +168,7 @@ async function sha256File(filePath, { signal, onProgress } = {}) {
   } catch {}
 
   const total = fs.statSync(filePath).size;
-  const fd = fs.openSync(filePath, 'r');
+  const fd = await fsp.open(filePath, 'r');
   try {
     const hash = await hashFd(fd, total, 0, signal, (n) => onProgress?.(n, total));
     try {
@@ -181,7 +176,7 @@ async function sha256File(filePath, { signal, onProgress } = {}) {
     } catch {}
     return hash;
   } finally {
-    fs.closeSync(fd);
+    await fd.close();
   }
 }
 
@@ -192,12 +187,12 @@ async function verifyRaw({ sourcePath, targetNode, totalBytes, signal, onProgres
     signal,
     onProgress: (n) => onProgress?.({ stage: 'source', read: n, total }),
   });
-  const fd = fs.openSync(targetNode, 'r');
+  const fd = await fsp.open(targetNode, 'r');
   try {
     const devHash = await hashFd(fd, total, 0, signal, (n) => onProgress?.({ stage: 'device', read: n, total }));
     return { ok: srcHash === devHash, srcHash, devHash };
   } finally {
-    fs.closeSync(fd);
+    await fd.close();
   }
 }
 

@@ -6,6 +6,9 @@ import { DeviceList } from './components/DeviceList';
 import { ConfirmDialog } from './components/ConfirmDialog';
 import { DoneView, ErrorView, WritingView, type Progress } from './components/Session';
 import { Alert, Drive, Shield, X } from './components/Icons';
+import { useI18n, setLang as applyLang } from './i18n';
+import { About } from './components/About';
+import { Settings } from './components/Settings';
 
 type View = 'select' | 'writing' | 'done' | 'error';
 
@@ -24,6 +27,7 @@ const EMPTY_PROGRESS: Progress = {
 const PLATFORM_LABEL: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 
 export default function App() {
+  const { t } = useI18n();
   const [boot, setBoot] = useState<BootInfo | null>(null);
   const [image, setImage] = useState<ImageInfo | null>(null);
   const [probing, setProbing] = useState(false);
@@ -33,6 +37,8 @@ export default function App() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [view, setView] = useState<View>('select');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [verify, setVerify] = useState(true);
   const [persistence, setPersistence] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
@@ -53,9 +59,20 @@ export default function App() {
       .boot()
       .then((b) => {
         setBoot(b);
+        if (b.language) applyLang(b.language);
         if (b.platform === 'darwin') document.body.classList.add('is-mac');
       })
       .catch(() => {});
+  }, []);
+
+  /* ---------------------------- 菜单触发面板 ---------------------------- */
+  useEffect(() => {
+    const offS = api().onOpenSettings(() => setSettingsOpen(true));
+    const offA = api().onOpenAbout(() => setAboutOpen(true));
+    return () => {
+      offS();
+      offA();
+    };
   }, []);
 
   /* ---------------------------- 写入事件 ---------------------------- */
@@ -87,7 +104,7 @@ export default function App() {
         setElapsed(ev.result?.elapsedSec || (Date.now() - startedAt.current) / 1000);
         setView('done');
       } else if (ev.kind === 'error') {
-        setError(ev.error || { code: 'UNKNOWN', message: '未知错误' });
+        setError(ev.error || { code: 'UNKNOWN', message: t('unknownError') });
         setView('error');
       } else if (ev.kind === 'cancelled') {
         setView('select');
@@ -134,12 +151,12 @@ export default function App() {
     try {
       const info = await api().probeImage(path);
       if (!info || info.ok === false) {
-        setProbeError((info as any)?.error || '无法解析该镜像');
+        setProbeError((info as any)?.error || t('parseFailed'));
       } else {
         setImage(info);
       }
     } catch (e: any) {
-      setProbeError(e?.message || '无法解析该镜像');
+      setProbeError(e?.message || t('parseFailed'));
     } finally {
       setProbing(false);
     }
@@ -179,7 +196,7 @@ export default function App() {
       } else if (legacy) {
         probe(legacy);
       } else {
-        setProbeError(`无法读取「${file.name}」的磁盘路径，请改用「选择镜像」按钮`);
+        setProbeError(t('dropPathFailed', { name: file.name }));
       }
     };
     window.addEventListener('dragenter', onDragEnter);
@@ -218,7 +235,7 @@ export default function App() {
       });
       setJobId(id);
     } catch (e: any) {
-      setError({ code: 'START_FAILED', message: e?.message || '无法启动写入任务' });
+      setError({ code: 'START_FAILED', message: e?.message || t('startFailed') });
       setView('error');
     }
   };
@@ -271,7 +288,7 @@ export default function App() {
           </div>
           <div className="brand-text">
             <div className="brand-name">DITER</div>
-            <div className="brand-sub">跨平台启动盘写入工具</div>
+            <div className="brand-sub">{t('brandSub')}</div>
           </div>
         </div>
 
@@ -279,7 +296,7 @@ export default function App() {
 
         {isMock() && (
           <span className="pill" style={{ color: 'var(--info)', borderColor: 'rgba(90,169,255,.28)' }}>
-            界面预览模式
+            {t('previewMode')}
           </span>
         )}
         <span className="pill mono">
@@ -287,18 +304,18 @@ export default function App() {
         </span>
         {boot?.elevated ? (
           <span className="pill ok">
-            <span className="dot" /> 管理员权限
+            <span className="dot" /> {t('admin')}
           </span>
         ) : (
-          <span className="pill warn" onClick={requestElevation} title="点击授权管理员权限">
+          <span className="pill warn" onClick={requestElevation} title={t('needAuth')}>
             {elevating ? (
               <>
                 <span className="spin" style={{ width: 11, height: 11, border: '1.5px solid currentColor', borderTopColor: 'transparent', borderRadius: '50%', display: 'inline-block' }} />
-                正在授权…
+                {t('authorizing')}
               </>
             ) : (
               <>
-                <Alert size={11} /> 需要授权
+                <Alert size={11} /> {t('needAuth')}
               </>
             )}
           </span>
@@ -310,11 +327,11 @@ export default function App() {
           <div className="content">
             <div className="col">
               <div className="section-head">
-                <span className="section-title">系统镜像</span>
+                <span className="section-title">{t('sectionImage')}</span>
                 <span className="spacer" />
                 {image && (
                   <button className="btn ghost sm" onClick={() => { setImage(null); setProbeError(null); }}>
-                    清除
+                    {t('clear')}
                   </button>
                 )}
               </div>
@@ -327,12 +344,12 @@ export default function App() {
               />
               {image && <Preflight image={image} device={selected} />}
               <div className="scope-line">
-                <span>支持范围</span>
+                <span>{t('scope')}</span>
                 <b>Windows 7 – 11</b>
                 <i>·</i>
                 <b>macOS 10.10 – 27</b>
                 <i>·</i>
-                <b>Linux 全系</b>
+                <b>Linux</b>
               </div>
               {probeError && (
                 <div className="panel" style={{ padding: '10px 14px', display: 'flex', gap: 9, alignItems: 'center' }}>
@@ -344,13 +361,12 @@ export default function App() {
 
             <div className="col" style={{ minHeight: 0 }}>
               <div className="section-head">
-                <span className="section-title">目标设备</span>
+                <span className="section-title">{t('sectionDevice')}</span>
                 <span className="section-meta">
-                  {devices.filter((d) => d.selectable).length} 台可写 ·{' '}
-                  {devices.filter((d) => !d.selectable).length} 台已锁定
+                  {t('writableCount', { a: devices.filter((d) => d.selectable).length, b: devices.filter((d) => !d.selectable).length })}
                 </span>
                 <span className="spacer" />
-                {scanning && <span className="section-meta">扫描中…</span>}
+                {scanning && <span className="section-meta">{t('scanning')}</span>}
               </div>
               <DeviceList
                 devices={devices}
@@ -365,7 +381,7 @@ export default function App() {
             <div className="footer-note">
               <Shield size={14} style={{ color: 'var(--faint)' }} />
               <span>
-                目标设备将被<strong>完全清空</strong>，系统盘已在硬件层锁定，无法被选中
+                {t('footerWarn')}
               </span>
             </div>
             <div className="footer-spacer" />
@@ -373,17 +389,17 @@ export default function App() {
             {image?.supportsPersistence && (
               <div className={`switch ${persistence ? 'on' : ''}`} onClick={() => setPersistence(!persistence)}>
                 <span className="switch-track" />
-                <span>持久化分区</span>
+                <span>{t('persistence')}</span>
               </div>
             )}
 
             <div className={`switch ${verify ? 'on' : ''}`} onClick={() => setVerify(!verify)}>
               <span className="switch-track" />
-              <span>写入后校验</span>
+              <span>{t('verify')}</span>
             </div>
 
             <button className="btn primary" disabled={!canStart} onClick={handleStart}>
-              {image ? (selected ? '开始写入' : '选择目标设备') : '请先选择镜像'}
+              {image ? (selected ? t('startWrite') : t('selectDevice')) : t('selectImage')}
             </button>
           </footer>
         </>
@@ -414,9 +430,12 @@ export default function App() {
 
       {dragActive && (
         <div className="drag-veil">
-          <span>松开以识别镜像</span>
+          <span>{t('dropVeil')}</span>
         </div>
       )}
+
+      {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
+      {aboutOpen && <About version={boot?.version || '1.0.0'} onClose={() => setAboutOpen(false)} />}
     </div>
   );
 }

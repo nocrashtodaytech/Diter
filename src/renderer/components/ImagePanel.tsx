@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Device, ImageInfo } from '../types';
 import { Drive, Folder, Shield } from './Icons';
+import { useI18n } from '../i18n';
 
 const gb = (n: number) => {
   if (!Number.isFinite(n) || n <= 0) return '—';
@@ -23,17 +24,16 @@ export function ImagePanel({
   dragActive: boolean;
   loading: boolean;
 }) {
+  const { t } = useI18n();
   if (!image) {
     return (
       <div className={`dropzone ${dragActive ? 'drag' : ''}`} onClick={onPick}>
         <div className="dz-orb">
           {loading ? <div className="dz-spinner" /> : <Drive size={30} />}
         </div>
-        <div className="dz-title">{loading ? '正在解析镜像…' : '拖入系统镜像，或点击选择'}</div>
+        <div className="dz-title">{loading ? t('detecting') : t('dropTitle')}</div>
         <div className="dz-sub">
-          {loading
-            ? '正在读取镜像头、识别系统版本与引导方式'
-            : 'Windows 安装盘、macOS 安装器、任意 Linux 发行版 —— 拖进来即可，Diter 会自动识别版本与引导方式。'}
+          {loading ? t('detectingSub') : t('dropSub')}
         </div>
         {loading ? (
           <div className="dz-progress">
@@ -51,9 +51,9 @@ export function ImagePanel({
     );
   }
 
-  const t = image.target;
-  const os = t.os;
-  const conf = t.confidence >= 0.9 ? 'high' : '';
+  const target = image.target;
+  const os = target.os;
+  const conf = target.confidence >= 0.9 ? 'high' : '';
   const bootLabel = [image.hasUefiBoot ? 'UEFI' : null, image.hasBiosBoot ? 'Legacy' : null, os === 'macos' ? 'Apple' : null]
     .filter(Boolean)
     .join(' + ');
@@ -67,8 +67,8 @@ export function ImagePanel({
             {image.fileName}
           </div>
           <div className="image-sub">
-            <span>{t.version}</span>
-            <span className={`conf-chip ${conf}`}>识别度 {Math.round(t.confidence * 100)}%</span>
+            <span>{target.version}</span>
+            <span className={`conf-chip ${conf}`}>识别度 {Math.round(target.confidence * 100)}%</span>
           </div>
         </div>
         <button className="btn ghost sm" onClick={onPick} style={{ flex: '0 0 auto' }}>
@@ -79,11 +79,11 @@ export function ImagePanel({
       <div className="meta-grid">
         <div className="meta-cell">
           <div className="meta-k">目标系统</div>
-          <div className="meta-v">{t.osLabel}</div>
+          <div className="meta-v">{target.osLabel}</div>
         </div>
         <div className="meta-cell">
           <div className="meta-k">架构</div>
-          <div className="meta-v">{t.archLabel}</div>
+          <div className="meta-v">{target.archLabel}</div>
         </div>
         <div className="meta-cell">
           <div className="meta-k">镜像大小</div>
@@ -95,7 +95,7 @@ export function ImagePanel({
         <span className="ev">引导 {bootLabel || '未知'}</span>
         <span className="ev">分区 {image.recommended?.scheme?.toUpperCase() || '—'}</span>
         <span className="ev">文件系统 {image.recommended?.filesystem || '—'}</span>
-        {(t.evidence || []).slice(0, 3).map((e) => (
+        {(target.evidence || []).slice(0, 3).map((e) => (
           <span className="ev" key={e}>
             {e}
           </span>

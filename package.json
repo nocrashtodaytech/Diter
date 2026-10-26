@@ -1,7 +1,7 @@
 {
   "name": "diter",
   "productName": "Diter",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Diter · 跨平台 USB 启动盘写入工具（Windows / macOS / Linux）",
   "main": "electron/main.js",
   "author": "Diter",

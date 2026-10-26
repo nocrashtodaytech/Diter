@@ -100,13 +100,19 @@ async function waitMountPoint(deviceId, { timeoutMs = 30000 } = {}) {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** 简单滑动平均，用于速率显示不抖 */
+/** 简单滑动平均，用于速率显示不抖。
+ *  关键：写入慢时（一个 chunk 耗时超过窗口），窗口内样本会稀疏到不足 2 个，
+ *  此时退回「累计平均速率」兜底，保证速率永远非 0 而不是显示 0 B/s。 */
 class RateMeter {
-  constructor(windowMs = 3000) {
+  constructor(windowMs = 8000) {
     this.windowMs = windowMs;
     this.samples = [];
+    this.started = 0;
+    this.total = 0;
   }
   push(bytes, now = Date.now()) {
+    if (!this.started) this.started = now;
+    this.total = bytes;
     this.samples.push({ bytes, t: now });
     const cutoff = now - this.windowMs;
     while (this.samples.length > 2 && this.samples[0].t < cutoff) this.samples.shift();
@@ -114,15 +120,25 @@ class RateMeter {
   }
   rate(now = Date.now()) {
     const s = this.samples;
-    if (s.length < 2) return 0;
-    const first = s[0];
-    const last = s[s.length - 1];
-    const dt = (last.t - first.t) / 1000;
-    if (dt <= 0.05) return 0;
-    return Math.max(0, (last.bytes - first.bytes) / dt);
+    // 首选：窗口内首尾样本的增量速率
+    if (s.length >= 2) {
+      const first = s[0];
+      const last = s[s.length - 1];
+      const dt = (last.t - first.t) / 1000;
+      if (dt > 0.05) {
+        const speed = (last.bytes - first.bytes) / dt;
+        if (speed > 0) return speed;
+      }
+    }
+    // 兜底：从开始到现在的平均速率（样本稀疏时仍给出非零值）
+    const dtTotal = (now - this.started) / 1000;
+    if (dtTotal > 1 && this.total > 0) return this.total / dtTotal;
+    return 0;
   }
   reset() {
     this.samples = [];
+    this.started = 0;
+    this.total = 0;
   }
 }
 

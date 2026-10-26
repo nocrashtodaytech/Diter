@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Device, ImageInfo } from '../types';
 import { Alert, Check, Spin } from './Icons';
+import { useI18n } from '../i18n';
 
 export interface Progress {
   pct: number;
@@ -29,6 +30,7 @@ const dur = (s: number) => {
 };
 
 function Spark({ samples }: { samples: number[] }) {
+  const { t } = useI18n();
   const data = samples.filter((n) => n > 0).slice(-64);
   const W = 300;
   const H = 52;
@@ -52,8 +54,8 @@ function Spark({ samples }: { samples: number[] }) {
   return (
     <div className="spark">
       <div className="spark-head">
-        <span>写入速率</span>
-        <span style={{ fontFamily: 'var(--mono)' }}>{peak ? `${bytes(peak)}/s 峰值` : '采样中…'}</span>
+        <span>{t('writeRate')}</span>
+        <span style={{ fontFamily: 'var(--mono)' }}>{peak ? `${bytes(peak)}/s ${t('peak')}` : t('sampling')}</span>
       </div>
       <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" style={{ width: '100%', flex: 1 }}>
         <defs>
@@ -95,11 +97,12 @@ export function WritingView({
   onCancel: () => void;
 }) {
   const pct = Math.round(progress.pct * 1000) / 10;
+  const { t } = useI18n();
   return (
     <div className="session">
       <div className="session-head">
         <div>
-          <div className="session-title">正在写入</div>
+          <div className="session-title">{t('writing')}</div>
           <div className="session-sub">
             {image.fileName} <span style={{ color: '#c2c6cc' }}>→</span> {device.name}
           </div>
@@ -124,21 +127,21 @@ export function WritingView({
 
       <div className="stats">
         <div className="stat">
-          <div className="stat-k">写入速度</div>
+          <div className="stat-k">{t('writeSpeed')}</div>
           <div className="stat-v" style={{ color: '#0a84ff' }}>
             {bytes(progress.speed)}/s
           </div>
         </div>
         <div className="stat">
-          <div className="stat-k">剩余时间</div>
+          <div className="stat-k">{t('remaining')}</div>
           <div className="stat-v">{dur(progress.eta)}</div>
         </div>
         <div className="stat">
-          <div className="stat-k">已写入</div>
+          <div className="stat-k">{t('written')}</div>
           <div className="stat-v">{bytes(progress.bytesWritten)}</div>
         </div>
         <div className="stat">
-          <div className="stat-k">目标设备</div>
+          <div className="stat-k">{t('targetDevice')}</div>
           <div className="stat-v" style={{ fontSize: 12.5, fontFamily: 'var(--sans)' }}>
             {device.node}
           </div>
@@ -157,10 +160,10 @@ export function WritingView({
 
       <div className="session-actions">
         <div className="footer-note">
-          <span>写入过程中请勿拔出设备或关闭窗口</span>
+          <span>{t('noRemove')}</span>
         </div>
         <button className="btn danger" onClick={onCancel}>
-          中止写入
+          {t('abort')}
         </button>
       </div>
     </div>
@@ -180,13 +183,14 @@ export function DoneView({
   onEject: () => void;
   onAgain: () => void;
 }) {
+  const { t } = useI18n();
   const v = result?.verification;
   const chips: string[] = [];
   if (result?.engine) chips.push(result.engine);
-  if (v) chips.push(v.ok ? 'SHA-256 校验通过' : '校验不一致');
-  if (result?.legacyBoot) chips.push('Legacy BIOS 可启动');
-  if (result?.persistence?.created) chips.push('已创建持久化分区');
-  if (result?.files) chips.push(`${result.files} 个文件`);
+  if (v) chips.push(v.ok ? t('shaOk') : t('shaMismatch'));
+  if (result?.legacyBoot) chips.push(t('legacyBoot'));
+  if (result?.persistence?.created) chips.push(t('persistenceCreated'));
+  if (result?.files) chips.push(t('filesCount', { n: result.files }));
 
   const written = result?.bytes || (v ? device.size : 0);
   const avg = elapsedSec > 0 && written > 0 ? written / elapsedSec : 0;
@@ -196,9 +200,9 @@ export function DoneView({
       <div className="result-orb ok">
         <Check size={36} style={{ color: 'var(--ok)' }} />
       </div>
-      <h2>写入完成</h2>
+      <h2>{t('done')}</h2>
       <p>
-        <strong style={{ color: '#1d1d1f' }}>{device.name}</strong> 已可启动。
+        <strong style={{ color: '#1d1d1f' }}>{device.name}</strong> {t('bootable')}。
         {result?.note ? <> {result.note}</> : null}
       </p>
 
@@ -212,41 +216,41 @@ export function DoneView({
 
       <div className="stats" style={{ width: '100%', maxWidth: 560, marginTop: 6 }}>
         <div className="stat">
-          <div className="stat-k">目标设备</div>
+          <div className="stat-k">{t('targetDevice')}</div>
           <div className="stat-v" style={{ fontSize: 12, fontFamily: 'var(--sans)' }}>
             {device.node}
           </div>
         </div>
         <div className="stat">
-          <div className="stat-k">耗时</div>
+          <div className="stat-k">{t('elapsed')}</div>
           <div className="stat-v">{dur(elapsedSec) === '—' ? '—' : dur(elapsedSec)}</div>
         </div>
         <div className="stat">
-          <div className="stat-k">平均速率</div>
+          <div className="stat-k">{t('avgSpeed')}</div>
           <div className="stat-v" style={{ color: '#0a84ff' }}>
             {avg > 0 ? `${bytes(avg)}/s` : '—'}
           </div>
         </div>
         <div className="stat">
-          <div className="stat-k">数据校验</div>
+          <div className="stat-k">{t('verification')}</div>
           <div className="stat-v" style={{ color: v?.ok ? 'var(--ok)' : v ? 'var(--danger)' : 'var(--faint)' }}>
-            {v ? (v.ok ? '一致' : '不一致') : '未启用'}
+            {v ? (v.ok ? t('match') : t('mismatch')) : t('notEnabled')}
           </div>
         </div>
       </div>
 
       {v && !v.ok && (
         <p style={{ color: 'var(--danger)', maxWidth: 420 }}>
-          校验阶段发现差异（{v.error || '源与设备内容不一致'}）。可能是写入过程中设备被拔出或存在坏块，建议重新写入。
+          {t('verifyFailed')}
         </p>
       )}
 
       <div className="result-actions">
         <button className="btn ghost" onClick={onAgain}>
-          再写一个
+          {t('again')}
         </button>
         <button className="btn primary" onClick={onEject}>
-          安全弹出
+          {t('eject')}
         </button>
       </div>
     </div>
@@ -262,16 +266,17 @@ export function ErrorView({
   onBack: () => void;
   device?: Device | null;
 }) {
+  const { t } = useI18n();
   return (
     <div className="result">
       <div className="result-orb err">
         <Alert size={34} style={{ color: 'var(--danger)' }} />
       </div>
-      <h2>写入未完成</h2>
+      <h2>{t('writeFailed')}</h2>
       <p>{error.message}</p>
       {device && (
         <p style={{ color: 'var(--faint)', fontSize: 11.5 }}>
-          目标设备 {device.name}（{device.node}）可能已处于不完整状态，请重新写入后再使用。
+          {t('incomplete', { name: device.name, node: device.node })}
         </p>
       )}
       {error.detail && (
@@ -284,7 +289,7 @@ export function ErrorView({
       )}
       <div className="result-actions">
         <button className="btn primary" onClick={onBack}>
-          返回重试
+          {t('retry')}
         </button>
       </div>
     </div>

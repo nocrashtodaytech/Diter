@@ -95,6 +95,7 @@ export interface BootInfo {
   elevated: boolean;
   elevatedByArg: boolean;
   electron: string;
+  language?: 'zh' | 'en';
 }
 
 export interface StartPayload {
@@ -130,7 +131,11 @@ export interface DiterApi {
   assertWritable(p: { device: Device; imageSize: number; allowUnknownBus: boolean }): Promise<any>;
   reveal(path: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  getLanguage(): Promise<'zh' | 'en'>;
+  setLanguage(lang: 'zh' | 'en'): Promise<'zh' | 'en'>;
   pathForFile(file: File): string;
   onEvent(cb: (e: JobEvent) => void): () => void;
+  onOpenSettings(cb: () => void): () => void;
+  onOpenAbout(cb: () => void): () => void;
   isDesktop: boolean;
 }
