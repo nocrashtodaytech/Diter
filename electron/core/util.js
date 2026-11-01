@@ -100,45 +100,75 @@ async function waitMountPoint(deviceId, { timeoutMs = 30000 } = {}) {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-/** 简单滑动平均，用于速率显示不抖。
- *  关键：写入慢时（一个 chunk 耗时超过窗口），窗口内样本会稀疏到不足 2 个，
- *  此时退回「累计平均速率」兜底，保证速率永远非 0 而不是显示 0 B/s。 */
+/** 速率测量：用 EMA（指数移动平均）平滑瞬时速率，并给出稳定的 ETA。
+ *
+ *  为什么不用简单滑动窗口：
+ *   1. 写入是「大块 + 突发」的 —— U 盘写入时内核周期性 flush，瞬时速率会在
+ *      100 MB/s 与几 KB/s 之间剧烈摆动。窗口首尾差分会把这种抖动直接放大，
+ *      导致「剩余 1 分钟」下一秒变成「3000 多小时」。
+ *   2. 慢速写入时（一个 64MB 块耗时数秒），8 秒窗口内样本稀疏，窗口算法退化为
+ *      累计平均，早期样本不足又会给出极小速率 → ETA 巨大。
+ *
+ *  EMA 相当于一个低通滤波器，时间常数约 2~3 秒，把高频抖动滤掉；ETA 再做一层
+ *  低通平滑 + 单步涨幅钳制，保证只向真实值收敛、绝不瞬间跳变。 */
 class RateMeter {
   constructor(windowMs = 8000) {
     this.windowMs = windowMs;
-    this.samples = [];
     this.started = 0;
     this.total = 0;
+    this._ema = 0; // EMA 平滑速率 (B/s)
+    this._lastBytes = 0;
+    this._lastT = 0;
+    this._eta = 0; // 平滑后的 ETA（秒）
   }
   push(bytes, now = Date.now()) {
-    if (!this.started) this.started = now;
+    if (!this.started) {
+      this.started = now;
+      this._lastT = now;
+      this._lastBytes = bytes;
+      this.total = bytes;
+      return 0;
+    }
+    const dt = (now - this._lastT) / 1000;
+    const db = bytes - this._lastBytes;
+    this._lastT = now;
+    this._lastBytes = bytes;
     this.total = bytes;
-    this.samples.push({ bytes, t: now });
-    const cutoff = now - this.windowMs;
-    while (this.samples.length > 2 && this.samples[0].t < cutoff) this.samples.shift();
+    if (dt > 0.05 && db > 0) {
+      const inst = db / dt;
+      // alpha 随采样间隔自适应：间隔越短越信任新样本，整体时间常数 ~4s，
+      // 足够滤掉 U 盘周期性 flush 造成的瞬时速率骤降/骤升。
+      const alpha = Math.min(0.3, dt / (dt + 4));
+      this._ema = this._ema > 0 ? this._ema + alpha * (inst - this._ema) : inst;
+    }
     return this.rate(now);
   }
   rate(now = Date.now()) {
-    const s = this.samples;
-    // 首选：窗口内首尾样本的增量速率
-    if (s.length >= 2) {
-      const first = s[0];
-      const last = s[s.length - 1];
-      const dt = (last.t - first.t) / 1000;
-      if (dt > 0.05) {
-        const speed = (last.bytes - first.bytes) / dt;
-        if (speed > 0) return speed;
-      }
-    }
-    // 兜底：从开始到现在的平均速率（样本稀疏时仍给出非零值）
+    if (this._ema > 0) return this._ema;
+    // 兜底：累计平均（样本仍稀疏时给出非零值，而非显示 0 B/s）
     const dtTotal = (now - this.started) / 1000;
-    if (dtTotal > 1 && this.total > 0) return this.total / dtTotal;
+    if (dtTotal > 2 && this.total > 0) return this.total / dtTotal;
     return 0;
   }
+  /** 用平滑速率计算剩余时间，再做一层低通，消除「1 分钟 → 3000 小时」的跳变。
+   *  速率本身已 EMA 平滑，ETA 只需轻量低通即可稳定；不加涨幅上限，保证持续
+   *  变慢时 ETA 仍能逐步收敛到真实值，而非被钳制在偏低的假值上。 */
+  eta(remaining, now = Date.now()) {
+    const speed = this.rate(now);
+    if (speed <= 0 || remaining <= 0) return this._eta || 0;
+    const raw = remaining / speed;
+    if (!Number.isFinite(raw) || raw <= 0) return this._eta || 0;
+    if (!this._eta) this._eta = raw;
+    else this._eta = this._eta * 0.75 + raw * 0.25;
+    return this._eta;
+  }
   reset() {
-    this.samples = [];
     this.started = 0;
     this.total = 0;
+    this._ema = 0;
+    this._lastBytes = 0;
+    this._lastT = 0;
+    this._eta = 0;
   }
 }
 

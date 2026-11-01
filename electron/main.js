@@ -259,7 +259,7 @@ ipcMain.handle('diter:pick-image', async () => {
     title: '选择系统镜像',
     properties: ['openFile'],
     filters: [
-      { name: '系统镜像', extensions: ['iso', 'img', 'dmg', 'cdr', 'app'] },
+      { name: '系统镜像', extensions: ['iso', 'img', 'dmg', 'cdr', 'app', 'raw', 'bin'] },
       { name: '全部文件', extensions: ['*'] },
     ],
   });

@@ -23,7 +23,9 @@ const bytes = (n: number) => {
   return `${v >= 100 || i === 0 ? Math.round(v) : v.toFixed(1)} ${u[i]}`;
 };
 const dur = (s: number) => {
-  if (!Number.isFinite(s) || s <= 0) return '—';
+  // 无效值或超过 48 小时一律显示「—」：写入初期速率尚未稳定时 ETA 可能被外推成
+  // 几百上千小时，直接展示会吓到用户，这里统一截断为「无法预估」。
+  if (!Number.isFinite(s) || s <= 0 || s > 86400 * 2) return '—';
   if (s < 60) return `${Math.ceil(s)} 秒`;
   const m = Math.floor(s / 60);
   return m < 60 ? `${m} 分 ${Math.round(s % 60)} 秒` : `${Math.floor(m / 60)} 时 ${m % 60} 分`;

@@ -4,6 +4,7 @@
  * 目标：在写入前就告诉用户"这是什么系统、什么架构、能不能写、写哪里"。
  */
 const fs = require('fs');
+const path = require('path');
 
 const SECTOR = 2048;
 
@@ -49,11 +50,13 @@ function walkIsoDir(fd, lba, size, depth = 0, out = [], budget = { n: 0 }) {
       if (p >= data.length) break;
       continue;
     }
+    // 目录记录最小 34 字节；损坏的 len 会打乱游标甚至越界，直接放弃该目录
+    if (len < 34 || p + len > data.length) break;
     const extLba = data.readUInt32LE(p + 2);
     const extSize = data.readUInt32LE(p + 10);
     const flags = data[p + 25];
     const nameLen = data[p + 32];
-    let name = data.subarray(p + 33, p + 33 + nameLen).toString('latin1');
+    let name = data.subarray(p + 33, Math.min(p + 33 + nameLen, p + len)).toString('latin1');
     p += len;
 
     if (name === '\u0000' || name === '\u0001') continue; // '.' 与 '..'
@@ -66,6 +69,27 @@ function walkIsoDir(fd, lba, size, depth = 0, out = [], budget = { n: 0 }) {
     if (isDir) walkIsoDir(fd, extLba, extSize, depth + 1, out, budget);
   }
   return out;
+}
+
+/* ------------------------------------------------------------------ *
+ * 压缩镜像检测（xz / gzip / bzip2 / zstd / 7z）
+ * ------------------------------------------------------------------ */
+
+const COMPRESSION_SIGS = [
+  { sig: [0xfd, 0x37, 0x7a, 0x58, 0x5a, 0x00], name: 'XZ' },
+  { sig: [0x1f, 0x8b], name: 'GZip' },
+  { sig: [0x42, 0x5a, 0x68], name: 'BZip2' },
+  { sig: [0x28, 0xb5, 0x2f, 0xfd], name: 'Zstandard' },
+  { sig: [0x37, 0x7a, 0xbc, 0xaf, 0x27, 0x1c], name: '7-Zip' },
+];
+
+/** 检测文件头是否为压缩格式，返回格式名或 null */
+function sniffCompression(fd) {
+  const head = readAt(fd, 0, 16);
+  for (const c of COMPRESSION_SIGS) {
+    if (head.length >= c.sig.length && c.sig.every((b, i) => head[i] === b)) return c.name;
+  }
+  return null;
 }
 
 /* ------------------------------------------------------------------ *
@@ -214,6 +238,17 @@ function probeImage(imagePath) {
   let structures = { mbr: false, gpt: false, apm: false, hfs: false, apfs: false, isRaw: false };
 
   try {
+    // 压缩镜像（xz/gz/bz2/zst/7z）：明确报错，避免被静默识别为 raw 后逐字节写入、
+    // 产出无法启动的 U 盘。
+    const comp = sniffCompression(fd);
+    if (comp) {
+      const err = new Error(
+        `「${path.basename(imagePath)}」是 ${comp} 压缩镜像，请先解压成 .iso / .img 文件后再选择。`
+      );
+      err.code = 'COMPRESSED';
+      throw err;
+    }
+
     structures = sniffStructures(fd, stat.size);
     pvd = parsePvd(fd);
     if (pvd) {
@@ -227,12 +262,28 @@ function probeImage(imagePath) {
         if (scan.includes(n)) entries.push({ name: n.toLowerCase(), isDir: false, size: 0 });
       }
     } else if (structures.udf) {
-      // 纯 UDF 光盘：目录项为 dstring，退化为头部扫描关键文件名（ASCII 文件名在 UDF 中常为单字节）
-      const scanLen = Math.min(stat.size, 8 * 1024 * 1024);
-      const scan = readAt(fd, 0, scanLen).toString('latin1');
-      const udfMarkers = ['install.wim', 'install.esd', 'sources', 'bootmgr', 'setup.exe', 'casper', 'isolinux', 'vmlinuz', 'liveos', 'boot'];
-      for (const n of udfMarkers) {
-        if (scan.includes(n)) entries.push({ name: n.toLowerCase(), isDir: false, size: 0 });
+      // 纯 UDF 光盘（较新的 Windows 安装盘）：目录项为压缩 dstring，难以轻量解析目录树。
+      // 采用分段抽样扫描：头部 + 中段 + 尾部各扫一段，覆盖分散存放的关键文件名，
+      // 避免只扫前 8MB 而漏掉 sources/install.wim 等标记导致识别成 unknown。
+      const marks = [
+        'install.wim', 'install.esd', 'install.swm', 'sources', 'bootmgr',
+        'bootmgr.efi', 'setup.exe', 'casper', 'isolinux', 'vmlinuz', 'liveos', 'boot',
+      ];
+      const probe = (offset, len) => {
+        if (offset >= stat.size) return;
+        const scan = readAt(fd, offset, Math.min(len, stat.size - offset)).toString('latin1').toLowerCase();
+        for (const n of marks) {
+          if (scan.includes(n)) entries.push({ name: n.toLowerCase(), isDir: false, size: 0 });
+        }
+      };
+      const span = 16 * 1024 * 1024;
+      probe(0, span); // 头部
+      probe(Math.max(0, Math.floor(stat.size / 2) - span / 2), span); // 中段
+      probe(Math.max(0, stat.size - span), span); // 尾部
+      // UDF 的 Anchor Volume Descriptor 在扇区 256，读取它可佐证这是 UDF 卷
+      const avdp = readAt(fd, 256 * SECTOR, SECTOR);
+      if (avdp.length >= 16 && avdp[0] === 2 && avdp.subarray(1, 6).toString('latin1') === 'NSR02') {
+        if (!entries.some((e) => e.name === 'boot')) entries.push({ name: 'boot', isDir: true, size: 0 });
       }
     } else if (structures.dmg) {
       // DMG（UDIF）容器：内部为压缩/加密数据，无法轻量解析，仅记录签名与关键字符串

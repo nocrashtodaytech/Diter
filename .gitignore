@@ -1,3 +1,9 @@
 node_modules/
 dist/
 .DS_Store
+
+# 发布产物（dmg / zip 等二进制，不发到仓库）
+release/
+
+# 第三方大二进制（官方 MSVC 运行库，README.txt 已附下载链接）
+assets/redist/vc_redist.x64.exe

@@ -56,7 +56,8 @@ async function writeRaw(o) {
     lastEmit = now;
     const speed = meter.push(written, now);
     const elapsed = (now - started) / 1000;
-    const eta = speed > 0 ? (total - written) / speed : 0;
+    // 用平滑后的 ETA，避免速率抖动导致「剩余 1 分钟 → 3000 小时」跳变
+    const eta = meter.eta(total - written, now);
     onProgress?.({ bytesWritten: written, totalBytes: total, speed, eta, elapsed });
   };
 
@@ -68,7 +69,9 @@ async function writeRaw(o) {
         throw err;
       }
       const want = Math.min(CHUNK, total - written);
-      const { bytesRead } = await src.read(buf, 0, want, written);
+      // 顺序读源文件（不传 position）：源文件从头到尾只读一次，让内核维护偏移，
+      // 避免每次 pread 的额外系统调用开销。
+      const { bytesRead } = await src.read(buf, 0, want);
       if (bytesRead <= 0) break;
 
       // 最后一块若不足 4096 字节，补齐到块边界再写（原始设备不接受非对齐写入）
@@ -83,7 +86,10 @@ async function writeRaw(o) {
 
       let off = 0;
       while (off < toWrite) {
-        const { bytesWritten } = await dst.write(data, off, toWrite - off, written + off);
+        // 顺序写目标设备（不传 position）：对 /dev/rdiskN 这类字符设备，
+        // 带 position 的写会走 pwrite，部分 macOS 版本对 raw device 的 pwrite
+        // 会退化为 seek+write 或产生额外开销；顺序 write 是 rdisk 的标准用法。
+        const { bytesWritten } = await dst.write(data, off, toWrite - off);
         if (bytesWritten <= 0) {
           const err = new Error('写入返回 0 字节，设备可能已断开');
           err.code = 'EIO';

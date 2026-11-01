@@ -56,6 +56,17 @@ cp -R electron "$WIN/resources/app/"
 cp -R dist "$WIN/resources/app/"
 cp package.json "$WIN/resources/app/"
 
+# VC++ 运行库：Electron 33 依赖 Microsoft Visual C++ 2015-2022 Redistributable，
+# 精简版 / 旧版 Windows 缺它会报「缺少 VCRUNTIME140_1.dll / MSVCP140.dll，建议重新安装」。
+# 随包附带官方安装程序 + 说明，用户双击即可修复。
+if [ -f assets/redist/vc_redist.x64.exe ]; then
+  cp assets/redist/vc_redist.x64.exe "$WIN/vc_redist.x64.exe"
+  cp assets/redist/README.txt "$WIN/运行库说明.txt"
+  echo "  ✓ 已附带 VC++ 运行库 vc_redist.x64.exe"
+else
+  echo "  ! 提示：assets/redist/vc_redist.x64.exe 不存在，未附带 VC++ 运行库"
+fi
+
 echo "  ✓ Diter-win32-x64"
 
 echo "=== 生成 dmg 与 zip ==="

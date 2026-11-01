@@ -64,10 +64,15 @@ npm start            # 构建并启动桌面应用
 
 | 产物 | 平台 | 说明 |
 |---|---|---|
-| `Diter-0.1.0-mac-x64.dmg` | macOS (x64) | 未签名 —— 首次打开需右键 → 打开 |
-| `Diter-win32-x64/Diter.exe` | Windows | 绿色免安装版（整个目录需一起保留） |
+| `Diter-1.0.1-mac-x64.dmg` | macOS (x64) | 未签名 —— 首次打开需右键 → 打开 |
+| `Diter-1.0.1-win-x64.zip` | Windows (x64) | 绿色免安装版（整个目录需一起保留） |
 
 重新打包：`npm run package`（见 `build/package.sh`）。
+
+> **Windows 常见问题**：若双击 `Diter.exe` 提示「缺少 VCRUNTIME140_1.dll /
+> MSVCP140.dll，建议重新安装」，是因为系统缺少 Microsoft Visual C++ 2015-2022
+> 运行库（Diter 基于 Electron 构建，依赖该运行库）。双击压缩包内的
+> `vc_redist.x64.exe` 安装后重新打开即可。
 
 ## 目录结构
 

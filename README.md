@@ -66,10 +66,15 @@ using mock data — it never touches a real disk.
 
 | Artifact | Platform | Notes |
 |---|---|---|
-| `Diter-0.1.0-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
-| `Diter-win32-x64/Diter.exe` | Windows | Portable, no installer (keep the whole folder together) |
+| `Diter-1.0.1-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
+| `Diter-1.0.1-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
 
 Rebuild: `npm run package` (see `build/package.sh`).
+
+> **Windows note**: if `Diter.exe` reports "VCRUNTIME140_1.dll / MSVCP140.dll is
+> missing, try reinstalling", your system is missing the Microsoft Visual C++
+> 2015-2022 Redistributable (required by Electron-based apps). Run the bundled
+> `vc_redist.x64.exe` and relaunch Diter.
 
 ## Project structure
 

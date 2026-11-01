@@ -142,11 +142,13 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
       let read = 0;
       while (read < e.size) {
         if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
-        const { bytesRead } = await inFd.read(buf, 0, Math.min(buf.length, e.size - read), read);
+        // 顺序读源文件、顺序写目标文件（不传 position），让内核维护偏移，
+        // 减少每次 pread/pwrite 的系统调用开销，尤其利于 FAT32 上的大文件连续写入。
+        const { bytesRead } = await inFd.read(buf, 0, Math.min(buf.length, e.size - read));
         if (bytesRead <= 0) break;
         let off = 0;
         while (off < bytesRead) {
-          const { bytesWritten } = await outFd.write(buf, off, bytesRead - off, read + off);
+          const { bytesWritten } = await outFd.write(buf, off, bytesRead - off);
           if (bytesWritten <= 0) throw Object.assign(new Error('写入目标失败，设备可能已断开'), { code: 'EIO' });
           off += bytesWritten;
         }
@@ -155,7 +157,7 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
         const now = Date.now();
         if (now - lastEmit >= 200) {
           lastEmit = now;
-          onBytes?.(done, total, meter.push(done, now));
+          onBytes?.(done, total, meter.push(done, now), meter.eta(total - done, now));
         }
       }
     } finally {
@@ -255,7 +257,7 @@ async function write(ctx) {
         emit,
         signal,
         skip,
-        onBytes: (done, total, speed) => {
+        onBytes: (done, total, speed, eta) => {
           const p = total > 0 ? done / total : 0;
           emit({
             pct: 0.14 + p * 0.78,
@@ -264,7 +266,7 @@ async function write(ctx) {
             bytesWritten: done,
             totalBytes: total,
             speed,
-            eta: speed > 0 ? (total - done) / speed : 0,
+            eta,
           });
         },
       });
