@@ -18,9 +18,16 @@ ipcRenderer.on('diter:event', (_e, payload) => {
 });
 
 // 菜单触发打开设置/关于面板
-const panelListeners = { settings: new Set(), about: new Set() };
+const panelListeners = { settings: new Set(), about: new Set(), update: new Set() };
 ipcRenderer.on('diter:open-settings', () => panelListeners.settings.forEach((fn) => { try { fn(); } catch {} }));
 ipcRenderer.on('diter:open-about', () => panelListeners.about.forEach((fn) => { try { fn(); } catch {} }));
+ipcRenderer.on('diter:open-update', () => panelListeners.update.forEach((fn) => { try { fn(); } catch {} }));
+
+// 更新进度事件
+const updateListeners = new Set();
+ipcRenderer.on('diter:update-progress', (_e, p) => {
+  updateListeners.forEach((fn) => { try { fn(p); } catch {} });
+});
 
 contextBridge.exposeInMainWorld('diter', {
   boot: () => ipcRenderer.invoke('diter:boot'),
@@ -35,7 +42,13 @@ contextBridge.exposeInMainWorld('diter', {
   reveal: (p) => ipcRenderer.invoke('diter:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('diter:open-external', url),
   getLanguage: () => ipcRenderer.invoke('diter:get-language'),
-  setLanguage: (lang) => ipcRenderer.invoke('diter:set-language', lang),
+  setLanguage: (lang, opts) => ipcRenderer.invoke('diter:set-language', lang, opts),
+  getAppearance: () => ipcRenderer.invoke('diter:get-appearance'),
+  setAppearance: (a) => ipcRenderer.invoke('diter:set-appearance', a),
+  getSettings: () => ipcRenderer.invoke('diter:get-settings'),
+  checkUpdate: () => ipcRenderer.invoke('diter:check-update'),
+  downloadUpdate: (asset) => ipcRenderer.invoke('diter:download-update', asset),
+  finishUpdate: (mode) => ipcRenderer.invoke('diter:finish-update', mode),
   pathForFile: (file) => {
     try {
       return webUtils.getPathForFile(file);
@@ -54,6 +67,14 @@ contextBridge.exposeInMainWorld('diter', {
   onOpenAbout: (cb) => {
     panelListeners.about.add(cb);
     return () => panelListeners.about.delete(cb);
+  },
+  onOpenUpdate: (cb) => {
+    panelListeners.update.add(cb);
+    return () => panelListeners.update.delete(cb);
+  },
+  onUpdateProgress: (cb) => {
+    updateListeners.add(cb);
+    return () => updateListeners.delete(cb);
   },
   isDesktop: true,
 });

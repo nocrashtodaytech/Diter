@@ -9,12 +9,13 @@ import { Alert, Drive, Shield, X } from './components/Icons';
 import { useI18n, setLang as applyLang } from './i18n';
 import { About } from './components/About';
 import { Settings } from './components/Settings';
+import { Update } from './components/Update';
 
 type View = 'select' | 'writing' | 'done' | 'error';
 
 const EMPTY_PROGRESS: Progress = {
   pct: 0,
-  phase: '准备',
+  phase: '',
   message: '',
   speed: 0,
   eta: 0,
@@ -27,7 +28,7 @@ const EMPTY_PROGRESS: Progress = {
 const PLATFORM_LABEL: Record<string, string> = { darwin: 'macOS', win32: 'Windows', linux: 'Linux' };
 
 export default function App() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [boot, setBoot] = useState<BootInfo | null>(null);
   const [image, setImage] = useState<ImageInfo | null>(null);
   const [probing, setProbing] = useState(false);
@@ -39,6 +40,7 @@ export default function App() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
+  const [updateOpen, setUpdateOpen] = useState(false);
   const [verify, setVerify] = useState(true);
   const [persistence, setPersistence] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
@@ -65,13 +67,21 @@ export default function App() {
       .catch(() => {});
   }, []);
 
+  /* ---------------------------- 语言方向（阿拉伯文 RTL） ---------------------------- */
+  useEffect(() => {
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === 'ar' ? 'rtl' : 'ltr';
+  }, [lang]);
+
   /* ---------------------------- 菜单触发面板 ---------------------------- */
   useEffect(() => {
     const offS = api().onOpenSettings(() => setSettingsOpen(true));
     const offA = api().onOpenAbout(() => setAboutOpen(true));
+    const offU = api().onOpenUpdate(() => setUpdateOpen(true));
     return () => {
       offS();
       offA();
+      offU();
     };
   }, []);
 
@@ -223,7 +233,7 @@ export default function App() {
   const doStart = async () => {
     if (!image || !selected) return;
     setConfirmOpen(false);
-    setProgress({ ...EMPTY_PROGRESS, totalBytes: image.size, logs: ['已提交写入任务'] });
+    setProgress({ ...EMPTY_PROGRESS, totalBytes: image.size, logs: [t('startWrite')] });
     startedAt.current = Date.now();
     setView('writing');
     try {
@@ -269,10 +279,10 @@ export default function App() {
         const b = await api().boot();
         setBoot(b);
       } else {
-        setElevateError((r && r.message) || '授权失败，请重试');
+        setElevateError((r && r.message) || t('elevateFailed'));
       }
     } catch (e: any) {
-      setElevateError(e?.message || '授权失败，请重试');
+      setElevateError(e?.message || t('elevateFailed'));
     } finally {
       setElevating(false);
     }
@@ -436,6 +446,7 @@ export default function App() {
 
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {aboutOpen && <About version={boot?.version || '1.0.0'} onClose={() => setAboutOpen(false)} />}
+      {updateOpen && <Update onClose={() => setUpdateOpen(false)} />}
     </div>
   );
 }

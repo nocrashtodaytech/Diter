@@ -986,6 +986,89 @@ body.is-mac .panel {
   text-decoration: underline;
 }
 
+/* ------------------------------ 检查更新 ------------------------------ */
+
+.update-body {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.update-line {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--dim);
+}
+.update-line.ok {
+  color: var(--ok);
+}
+.update-line.err {
+  color: var(--danger);
+}
+.update-found {
+  font-size: 14px;
+  color: var(--text);
+}
+.update-found b {
+  font-weight: 700;
+}
+.update-arrow {
+  color: var(--faint);
+  font-size: 12px;
+  margin-left: 6px;
+}
+.update-notes {
+  border: 1px solid var(--line-soft);
+  border-radius: 12px;
+  padding: 12px;
+  max-height: 180px;
+  overflow: auto;
+  background: var(--panel-3);
+}
+.update-notes-title {
+  font-size: 11px;
+  color: var(--faint);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 6px;
+}
+.update-notes-body {
+  font-size: 12px;
+  color: var(--dim);
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.update-asset {
+  font-size: 12px;
+  color: var(--faint);
+}
+.update-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.update-progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+.update-progress-fill {
+  height: 100%;
+  background: linear-gradient(135deg, var(--accent-2), var(--accent));
+  border-radius: 999px;
+  transition: width 0.2s;
+}
+.update-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--faint);
+}
+
 /* ------------------------------ 设置 ------------------------------ */
 
 .setting-row {
@@ -1025,6 +1108,54 @@ body.is-mac .panel {
   background: #fff;
   color: var(--text);
   box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+.lang-seg-wrap {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  max-width: 270px;
+}
+
+/* 设置面板两层选项卡 */
+.tab-bar {
+  display: flex;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 3px;
+  border-radius: 11px;
+  background: rgba(0, 0, 0, 0.06);
+}
+.tab {
+  flex: 1;
+  height: 32px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--dim);
+  transition: background 0.16s, color 0.16s, box-shadow 0.16s;
+}
+.tab:hover {
+  color: var(--text);
+}
+.tab.on {
+  background: #fff;
+  color: var(--text);
+  box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.18), inset 0 0 0 1px rgba(0, 0, 0, 0.04);
+}
+.setting-check {
+  margin-top: 18px;
+}
+.setting-check .confirm-check {
+  margin-top: 0;
+}
+.setting-check .confirm-check.on .box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.setting-hint {
+  margin-top: 9px;
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--faint);
 }
 
 /* 长按确认 */
@@ -1352,6 +1483,230 @@ body.is-mac .panel {
 }
 .spin {
   animation: spin 1s linear infinite;
+}
+
+/* ------------------------------ 深色模式 ------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-solid: #0d0d0f;
+    --bg-grad: radial-gradient(1100px 560px at 12% -8%, rgba(10, 132, 255, 0.2), transparent 62%),
+      radial-gradient(900px 520px at 92% 4%, rgba(90, 200, 250, 0.12), transparent 60%);
+    --panel: rgba(30, 30, 34, 0.55);
+    --panel-2: rgba(32, 32, 38, 0.88);
+    --panel-3: rgba(255, 255, 255, 0.06);
+    --line: rgba(255, 255, 255, 0.1);
+    --line-2: rgba(255, 255, 255, 0.2);
+    --line-soft: rgba(255, 255, 255, 0.08);
+    --text: #ffffff;
+    --dim: #c9c9d0;
+    --faint: #9fa0a8;
+    --accent: #0a84ff;
+    --accent-2: #409cff;
+    --accent-soft: rgba(10, 132, 255, 0.24);
+    --ok: #32d74b;
+    --ok-soft: rgba(48, 209, 88, 0.2);
+    --danger: #ff6b61;
+    --danger-soft: rgba(255, 105, 97, 0.2);
+    --warn: #ffd60a;
+    --warn-soft: rgba(255, 214, 10, 0.18);
+    --shadow: 0 18px 48px -24px rgba(0, 0, 0, 0.8);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.24);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.36);
+  }
+
+  /* 顶栏 / 底栏 */
+  .topbar {
+    background: rgba(24, 24, 28, 0.55);
+    border-bottom-color: rgba(255, 255, 255, 0.08);
+  }
+  body.is-mac .topbar {
+    background: rgba(24, 24, 28, 0.5);
+  }
+  .footer {
+    background: rgba(24, 24, 28, 0.55);
+    border-top-color: rgba(255, 255, 255, 0.08);
+  }
+  .brand-mark {
+    background: linear-gradient(145deg, rgba(10, 132, 255, 0.3), rgba(10, 132, 255, 0.16));
+    color: var(--accent-2);
+  }
+
+  /* 胶囊 */
+  .pill {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--dim);
+  }
+  .pill.ok {
+    color: var(--ok);
+  }
+  .pill.warn {
+    color: var(--warn);
+  }
+
+  /* 面板 */
+  body.is-mac .panel {
+    background: rgba(30, 30, 36, 0.6);
+  }
+
+  /* 拖放区 */
+  .dropzone {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: rgba(255, 255, 255, 0.2);
+  }
+  .dropzone:hover {
+    background: rgba(255, 255, 255, 0.09);
+  }
+  .dropzone.drag {
+    background: rgba(10, 132, 255, 0.16);
+  }
+  .dz-orb {
+    background: radial-gradient(circle at 32% 26%, rgba(10, 132, 255, 0.3), rgba(10, 132, 255, 0.14) 72%);
+    color: var(--accent-2);
+  }
+  .fmt {
+    background: rgba(255, 255, 255, 0.08);
+    color: var(--dim);
+  }
+  .dz-progress {
+    background: rgba(255, 255, 255, 0.14);
+  }
+
+  /* 镜像详情卡 */
+  .os-mark {
+    background: var(--panel-3);
+    color: var(--dim);
+  }
+  .os-mark.windows {
+    background: linear-gradient(150deg, rgba(10, 132, 255, 0.26), rgba(10, 132, 255, 0.12));
+    color: #409cff;
+  }
+  .os-mark.macos {
+    background: linear-gradient(150deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.07));
+    color: var(--dim);
+  }
+  .os-mark.linux {
+    background: linear-gradient(150deg, rgba(255, 159, 10, 0.24), rgba(255, 159, 10, 0.1));
+    color: #ffb340;
+  }
+  .conf-chip.high {
+    color: var(--ok);
+  }
+  .meta-cell {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .ev {
+    background: rgba(255, 255, 255, 0.08);
+  }
+
+  /* 设备列表 */
+  .device {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .device:hover {
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .device.selected {
+    background: rgba(10, 132, 255, 0.2);
+    box-shadow: 0 0 0 2.5px rgba(10, 132, 255, 0.55);
+  }
+  .device.locked,
+  .device.locked:hover {
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .device-icon {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .device.locked .device-icon {
+    background: rgba(255, 255, 255, 0.05);
+  }
+  .tag.safe {
+    color: var(--ok);
+  }
+  .tag.warn {
+    color: var(--warn);
+  }
+  .tag.lock {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .device-sub .sep,
+  .scope-line i {
+    background: #5a5b61;
+  }
+  .pf-dot.idle {
+    background: #5a5b61;
+  }
+
+  /* 按钮 */
+  .btn.ghost {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--dim);
+  }
+  .btn.ghost:hover {
+    background: rgba(255, 255, 255, 0.16);
+    color: var(--text);
+  }
+  .btn.primary:disabled {
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--faint);
+  }
+  .switch-track {
+    background: rgba(255, 255, 255, 0.22);
+  }
+
+  /* 弹窗 */
+  .overlay {
+    background: rgba(0, 0, 0, 0.52);
+  }
+  .modal {
+    background: rgba(34, 34, 40, 0.92);
+    box-shadow: 0 40px 90px -30px rgba(0, 0, 0, 0.85), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+  }
+  .target-box {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .box {
+    border-color: rgba(255, 255, 255, 0.32);
+  }
+
+  /* 关于 */
+  .about-hero .brand-mark {
+    background: linear-gradient(145deg, rgba(10, 132, 255, 0.3), rgba(10, 132, 255, 0.16));
+  }
+  .about-meta {
+    background: rgba(255, 255, 255, 0.06);
+  }
+
+  /* 检查更新 */
+  .update-progress-track {
+    background: rgba(255, 255, 255, 0.12);
+  }
+
+  /* 设置 */
+  .lang-seg,
+  .tab-bar {
+    background: rgba(255, 255, 255, 0.08);
+  }
+  .lang-opt.on,
+  .tab.on {
+    background: rgba(255, 255, 255, 0.14);
+    box-shadow: 0 2px 8px -2px rgba(0, 0, 0, 0.5), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  /* 写入视图 */
+  .stat {
+    background: rgba(255, 255, 255, 0.06);
+  }
+  .progress-bar {
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .logstrip {
+    background: rgba(255, 255, 255, 0.06);
+  }
 }
 
 /* ------------------------------ 下载镜像（已移除） ------------------------------ */

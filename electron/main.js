@@ -10,6 +10,7 @@ const writer = require('./core/writer');
 const elevation = require('./core/elevation');
 const helperServer = require('./core/helper-server');
 const helper = require('./core/helper-client');
+const updater = require('./core/updater');
 const { run } = require('./core/util');
 const pkg = require('../package.json');
 
@@ -105,31 +106,65 @@ function broadcast(e) {
 
 const configPath = () => path.join(app.getPath('userData'), 'config.json');
 
-function loadLanguage() {
+const LANGS = ['zh', 'zh-TW', 'en', 'ko', 'ru', 'ar'];
+const APPEARANCES = ['light', 'dark', 'system'];
+
+function loadConfig() {
   try {
     const c = JSON.parse(fs.readFileSync(configPath(), 'utf8'));
-    if (c.language === 'zh' || c.language === 'en') return c.language;
+    return c && typeof c === 'object' ? c : {};
   } catch {}
-  return 'zh';
+  return {};
 }
 
-function saveLanguage(lang) {
+function saveConfig(patch) {
+  const c = loadConfig();
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) delete c[k];
+    else c[k] = v;
+  }
   try {
     fs.mkdirSync(path.dirname(configPath()), { recursive: true });
-    fs.writeFileSync(configPath(), JSON.stringify({ language: lang }));
+    fs.writeFileSync(configPath(), JSON.stringify(c, null, 2));
   } catch {}
+}
+
+function loadLanguage() {
+  const c = loadConfig();
+  return LANGS.includes(c.language) ? c.language : 'zh';
+}
+
+function loadAppearance() {
+  const c = loadConfig();
+  return APPEARANCES.includes(c.appearance) ? c.appearance : 'system';
 }
 
 function sendToWin(channel) {
   if (win && !win.isDestroyed()) win.webContents.send(channel);
 }
 
+/* ----------------------------- 菜单标签多语言 ----------------------------- */
+const MENU = {
+  aboutDiter: { zh: '关于 Diter', 'zh-TW': '關於 Diter', en: 'About Diter', ko: 'Diter 정보', ru: 'О Diter', ar: 'حول Diter' },
+  checkUpdate: { zh: '检查更新…', 'zh-TW': '檢查更新…', en: 'Check for Updates…', ko: '업데이트 확인…', ru: 'Проверить обновления…', ar: 'التحقق من التحديثات…' },
+  settings: { zh: '设置…', 'zh-TW': '設定…', en: 'Settings…', ko: '설정…', ru: 'Настройки…', ar: 'الإعدادات…' },
+  hideDiter: { zh: '隐藏 Diter', 'zh-TW': '隱藏 Diter', en: 'Hide Diter', ko: 'Diter 숨기기', ru: 'Скрыть Diter', ar: 'إخفاء Diter' },
+  hideOthers: { zh: '隐藏其他', 'zh-TW': '隱藏其他', en: 'Hide Others', ko: '기타 숨기기', ru: 'Скрыть остальные', ar: 'إخفاء الآخرين' },
+  showAll: { zh: '全部显示', 'zh-TW': '全部顯示', en: 'Show All', ko: '모두 보기', ru: 'Показать все', ar: 'إظهار الكل' },
+  quitDiter: { zh: '退出 Diter', 'zh-TW': '退出 Diter', en: 'Quit Diter', ko: 'Diter 종료', ru: 'Выйти из Diter', ar: 'الخروج من Diter' },
+  file: { zh: '文件', 'zh-TW': '檔案', en: 'File', ko: '파일', ru: 'Файл', ar: 'ملف' },
+  quit: { zh: '退出', 'zh-TW': '退出', en: 'Exit', ko: '종료', ru: 'Выход', ar: 'خروج' },
+  help: { zh: '帮助', 'zh-TW': '說明', en: 'Help', ko: '도움말', ru: 'Справка', ar: 'تعليمات' },
+};
+
+const M = (key, lang) => (MENU[key] && (MENU[key][lang] || MENU[key].en)) || key;
+
 /** 应用菜单：macOS 在系统菜单栏，Windows/Linux 在窗口顶部菜单栏 */
 function buildMenu(lang) {
-  const L = (zh, en) => (lang === 'zh' ? zh : en);
   const isMac = process.platform === 'darwin';
   const openSettings = () => sendToWin('diter:open-settings');
   const openAbout = () => sendToWin('diter:open-about');
+  const openUpdate = () => sendToWin('diter:open-update');
 
   const template = [
     ...(isMac
@@ -137,31 +172,35 @@ function buildMenu(lang) {
           {
             label: 'Diter',
             submenu: [
-              { label: L('关于 Diter', 'About Diter'), click: openAbout },
+              { label: M('aboutDiter', lang), click: openAbout },
+              { label: M('checkUpdate', lang), click: openUpdate },
               { type: 'separator' },
-              { label: L('设置…', 'Settings…'), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { label: M('settings', lang), accelerator: 'CmdOrCtrl+,', click: openSettings },
               { type: 'separator' },
-              { role: 'hide', label: L('隐藏 Diter', 'Hide Diter') },
-              { role: 'hideOthers', label: L('隐藏其他', 'Hide Others') },
-              { role: 'unhide', label: L('全部显示', 'Show All') },
+              { role: 'hide', label: M('hideDiter', lang) },
+              { role: 'hideOthers', label: M('hideOthers', lang) },
+              { role: 'unhide', label: M('showAll', lang) },
               { type: 'separator' },
-              { role: 'quit', label: L('退出 Diter', 'Quit Diter') },
+              { role: 'quit', label: M('quitDiter', lang) },
             ],
           },
         ]
       : [
           {
-            label: L('文件', 'File'),
+            label: M('file', lang),
             submenu: [
-              { label: L('设置…', 'Settings…'), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { label: M('settings', lang), accelerator: 'CmdOrCtrl+,', click: openSettings },
               { type: 'separator' },
-              { role: 'quit', label: L('退出', 'Exit') },
+              { role: 'quit', label: M('quit', lang) },
             ],
           },
         ]),
     {
-      label: L('帮助', 'Help'),
-      submenu: [{ label: L('关于 Diter', 'About Diter'), click: openAbout }],
+      label: M('help', lang),
+      submenu: [
+        { label: M('aboutDiter', lang), click: openAbout },
+        { label: M('checkUpdate', lang), click: openUpdate },
+      ],
     },
   ];
 
@@ -207,7 +246,7 @@ if (elevation.isHelper()) {
     });
 
     app.whenReady().then(() => {
-      nativeTheme.themeSource = 'light';
+      nativeTheme.themeSource = loadAppearance();
       buildMenu(loadLanguage());
       createWindow();
       helper.setEventHandler(onAnyEvent);
@@ -239,15 +278,35 @@ ipcMain.handle('diter:boot', async () => ({
   elevatedByArg: elevation.isHelper(),
   electron: process.versions.electron,
   language: loadLanguage(),
+  appearance: loadAppearance(),
 }));
 
 ipcMain.handle('diter:get-language', () => loadLanguage());
 
-ipcMain.handle('diter:set-language', (_e, lang) => {
-  const l = lang === 'en' ? 'en' : 'zh';
-  saveLanguage(l);
+ipcMain.handle('diter:set-language', (_e, lang, opts) => {
+  const l = LANGS.includes(lang) ? lang : 'zh';
+  const asDefault = !!(opts && opts.default === true);
+  // 只有勾选「设为默认语言」才持久化；否则清除已存语言，下次启动回默认中文
+  saveConfig({ language: asDefault ? l : undefined });
   buildMenu(l);
   return l;
+});
+
+ipcMain.handle('diter:get-appearance', () => loadAppearance());
+
+ipcMain.handle('diter:set-appearance', (_e, a) => {
+  const v = APPEARANCES.includes(a) ? a : 'system';
+  nativeTheme.themeSource = v;
+  saveConfig({ appearance: v });
+  return v;
+});
+
+ipcMain.handle('diter:get-settings', () => {
+  const c = loadConfig();
+  return {
+    appearance: loadAppearance(),
+    defaultLanguage: typeof c.language === 'string' && LANGS.includes(c.language),
+  };
 });
 
 ipcMain.handle('diter:devices', async (_e, opts = {}) => {
@@ -395,6 +454,35 @@ ipcMain.handle('diter:assert-writable', async (_e, { device, imageSize, allowUnk
 ipcMain.handle('diter:reveal', async (_e, p) => shell.showItemInFolder(p));
 ipcMain.handle('diter:open-external', async (_e, url) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+});
+
+/* ----------------------------- 检查更新 ----------------------------- */
+
+ipcMain.handle('diter:check-update', async () => {
+  try {
+    return await updater.check();
+  } catch (e) {
+    return { ok: false, hasUpdate: false, error: e.message };
+  }
+});
+
+ipcMain.handle('diter:download-update', async (_e, asset) => {
+  if (!asset || !asset.url) return { ok: false, error: '未找到可下载的安装包' };
+  try {
+    const r = await updater.downloadAndInstall(asset, (p) => {
+      if (win && !win.isDestroyed()) win.webContents.send('diter:update-progress', p);
+    });
+    return { ok: true, ...r };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+});
+
+ipcMain.handle('diter:finish-update', (_e, mode) => {
+  setTimeout(() => {
+    if (mode === 'restart') app.relaunch();
+    app.quit();
+  }, 900);
 });
 
 function dirSize(dir) {

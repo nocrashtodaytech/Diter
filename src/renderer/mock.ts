@@ -2,7 +2,7 @@
  * 浏览器预览用的模拟后端。
  * 只在没有 Electron 桥接层时生效，用于评审界面与交互，不会触碰任何真实磁盘。
  */
-import type { DiterApi, Device, ImageInfo, JobEvent } from './types';
+import type { DiterApi, Device, ImageInfo, JobEvent, Lang, Appearance } from './types';
 
 const GB = 1024 * 1024 * 1024;
 
@@ -104,13 +104,14 @@ export function createMock(): DiterApi {
   let listeners = new Set<(e: JobEvent) => void>();
   const emit = (e: JobEvent) => listeners.forEach((fn) => fn(e));
   let timer: any = null;
-  const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>() };
-  let mockLang: 'zh' | 'en' = 'zh';
+  const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>(), update: new Set<() => void>() };
+  const updateListeners = new Set<(p: any) => void>();
+  let mockLang: Lang = 'zh';
 
   return {
     isDesktop: false,
     async boot() {
-      return { version: '1.0.0', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview', language: mockLang };
+      return { version: '1.0.0', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview', language: mockLang, appearance: 'system' as Appearance };
     },
     async listDevices() {
       const list = devices();
@@ -213,9 +214,18 @@ export function createMock(): DiterApi {
     async getLanguage() {
       return mockLang;
     },
-    async setLanguage(lang: 'zh' | 'en') {
+    async setLanguage(lang: Lang) {
       mockLang = lang;
       return lang;
+    },
+    async getAppearance() {
+      return 'system' as Appearance;
+    },
+    async setAppearance(a: Appearance) {
+      return a;
+    },
+    async getSettings() {
+      return { appearance: 'system' as Appearance, defaultLanguage: false };
     },
     pathForFile(file: File) {
       return `mock:///${file.name}`;
@@ -232,5 +242,20 @@ export function createMock(): DiterApi {
       panelListeners.about.add(cb);
       return () => panelListeners.about.delete(cb);
     },
+    onOpenUpdate(cb) {
+      panelListeners.update.add(cb);
+      return () => panelListeners.update.delete(cb);
+    },
+    onUpdateProgress(cb) {
+      updateListeners.add(cb);
+      return () => updateListeners.delete(cb);
+    },
+    async checkUpdate() {
+      return { ok: true, hasUpdate: false, current: '1.0.0', latest: '1.0.0' };
+    },
+    async downloadUpdate() {
+      return { ok: true, mode: 'manual', message: 'preview' };
+    },
+    async finishUpdate() {},
   };
 }

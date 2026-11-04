@@ -1,3 +1,6 @@
+export type Lang = 'zh' | 'zh-TW' | 'en' | 'ko' | 'ru' | 'ar';
+export type Appearance = 'light' | 'dark' | 'system';
+
 export type OsKind = 'windows' | 'macos' | 'linux' | 'unknown';
 
 export interface Verdict {
@@ -95,7 +98,33 @@ export interface BootInfo {
   elevated: boolean;
   elevatedByArg: boolean;
   electron: string;
-  language?: 'zh' | 'en';
+  language?: Lang;
+  appearance?: Appearance;
+}
+
+export interface UpdateAsset {
+  name: string;
+  url: string;
+  size: number;
+}
+
+export interface UpdateInfo {
+  ok: boolean;
+  hasUpdate: boolean;
+  current: string;
+  latest: string;
+  tagName?: string;
+  notes?: string;
+  htmlUrl?: string;
+  asset?: UpdateAsset | null;
+  error?: string;
+}
+
+export interface UpdateProgress {
+  phase: 'downloading' | 'installing';
+  pct: number;
+  received: number;
+  total: number;
 }
 
 export interface StartPayload {
@@ -131,11 +160,19 @@ export interface DiterApi {
   assertWritable(p: { device: Device; imageSize: number; allowUnknownBus: boolean }): Promise<any>;
   reveal(path: string): Promise<void>;
   openExternal(url: string): Promise<void>;
-  getLanguage(): Promise<'zh' | 'en'>;
-  setLanguage(lang: 'zh' | 'en'): Promise<'zh' | 'en'>;
+  getLanguage(): Promise<Lang>;
+  setLanguage(lang: Lang, opts?: { default?: boolean }): Promise<Lang>;
+  getAppearance(): Promise<Appearance>;
+  setAppearance(a: Appearance): Promise<Appearance>;
+  getSettings(): Promise<{ appearance: Appearance; defaultLanguage: boolean }>;
+  checkUpdate(): Promise<UpdateInfo>;
+  downloadUpdate(asset: UpdateAsset): Promise<{ ok: boolean; mode?: string; message?: string; error?: string }>;
+  finishUpdate(mode: string): Promise<void>;
   pathForFile(file: File): string;
   onEvent(cb: (e: JobEvent) => void): () => void;
   onOpenSettings(cb: () => void): () => void;
   onOpenAbout(cb: () => void): () => void;
+  onOpenUpdate(cb: () => void): () => void;
+  onUpdateProgress(cb: (p: UpdateProgress) => void): () => void;
   isDesktop: boolean;
 }

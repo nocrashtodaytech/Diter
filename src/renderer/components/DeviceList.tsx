@@ -1,6 +1,7 @@
 import React from 'react';
 import type { Device } from '../types';
 import { Check, Disc, Lock, Usb, Cpu } from './Icons';
+import { useI18n } from '../i18n';
 
 const gb = (n: number) => {
   const v = n / 1024 ** 3;
@@ -25,14 +26,15 @@ export function DeviceList({
   onSelect: (d: Device) => void;
   scanning: boolean;
 }) {
+  const { t } = useI18n();
   const safe = devices.filter((d) => d.selectable);
   const locked = devices.filter((d) => !d.selectable);
 
   if (!devices.length) {
     return (
       <div className="device-empty">
-        <strong>未检测到磁盘</strong>
-        <div style={{ marginTop: 4 }}>{scanning ? '正在扫描…' : '请插入 U 盘后重试。'}</div>
+        <strong>{t('noDisk')}</strong>
+        <div style={{ marginTop: 4 }}>{scanning ? t('scanning') : t('insertUsb')}</div>
       </div>
     );
   }
@@ -48,7 +50,7 @@ export function DeviceList({
             key={`${d.id}-${d.node}`}
             className={`device ${selected ? 'selected' : ''} ${isLocked ? 'locked' : ''}`}
             onClick={() => !isLocked && onSelect(d)}
-            title={isLocked ? d.verdict?.reason : '点击选择该设备'}
+            title={isLocked ? d.verdict?.reason : t('clickSelect')}
           >
             {isLocked ? (
               <div style={{ width: 18, flex: '0 0 18px' }} />
@@ -92,12 +94,12 @@ export function DeviceList({
               {isLocked ? (
                 <span className="tag lock">
                   <Lock size={10} />
-                  {d.verdict?.code === 'SYSTEM_DISK' ? '系统盘' : '已锁定'}
+                  {d.verdict?.code === 'SYSTEM_DISK' ? t('systemDisk') : t('locked')}
                 </span>
               ) : warn ? (
-                <span className="tag warn">容量偏紧</span>
+                <span className="tag warn">{t('tightCapacity')}</span>
               ) : (
-                <span className="tag safe">可写入</span>
+                <span className="tag safe">{t('writable')}</span>
               )}
             </div>
           </div>

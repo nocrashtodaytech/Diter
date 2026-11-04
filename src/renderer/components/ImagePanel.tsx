@@ -68,33 +68,33 @@ export function ImagePanel({
           </div>
           <div className="image-sub">
             <span>{target.version}</span>
-            <span className={`conf-chip ${conf}`}>识别度 {Math.round(target.confidence * 100)}%</span>
+            <span className={`conf-chip ${conf}`}>{t('confPct', { p: Math.round(target.confidence * 100) })}</span>
           </div>
         </div>
         <button className="btn ghost sm" onClick={onPick} style={{ flex: '0 0 auto' }}>
-          更换
+          {t('change')}
         </button>
       </div>
 
       <div className="meta-grid">
         <div className="meta-cell">
-          <div className="meta-k">目标系统</div>
+          <div className="meta-k">{t('targetOs')}</div>
           <div className="meta-v">{target.osLabel}</div>
         </div>
         <div className="meta-cell">
-          <div className="meta-k">架构</div>
+          <div className="meta-k">{t('arch')}</div>
           <div className="meta-v">{target.archLabel}</div>
         </div>
         <div className="meta-cell">
-          <div className="meta-k">镜像大小</div>
+          <div className="meta-k">{t('imageSize')}</div>
           <div className="meta-v">{gb(image.size)}</div>
         </div>
       </div>
 
       <div className="evidence">
-        <span className="ev">引导 {bootLabel || '未知'}</span>
-        <span className="ev">分区 {image.recommended?.scheme?.toUpperCase() || '—'}</span>
-        <span className="ev">文件系统 {image.recommended?.filesystem || '—'}</span>
+        <span className="ev">{t('boot')} {bootLabel || t('unknown')}</span>
+        <span className="ev">{t('partition')} {image.recommended?.scheme?.toUpperCase() || '—'}</span>
+        <span className="ev">{t('filesystem')} {image.recommended?.filesystem || '—'}</span>
         {(target.evidence || []).slice(0, 3).map((e) => (
           <span className="ev" key={e}>
             {e}
@@ -104,7 +104,7 @@ export function ImagePanel({
 
       <div className="footer-note" style={{ fontSize: 11.5 }}>
         <Shield size={13} style={{ color: 'var(--faint)' }} />
-        <span>{image.recommended?.note || '按镜像原始结构写入'}</span>
+        <span>{image.recommended?.note || t('rawNote')}</span>
       </div>
     </div>
   );
@@ -118,31 +118,32 @@ export const fmtGB = gb;
  * 让用户在按下"开始写入"之前就能看到会成功还是会失败。
  */
 export function Preflight({ image, device }: { image: ImageInfo; device: Device | null }) {
+  const { t } = useI18n();
   const conf = image.target.confidence;
-  const boot = [image.hasUefiBoot ? 'UEFI' : null, image.hasBiosBoot ? 'Legacy BIOS' : null, image.target.os === 'macos' ? 'Apple 引导' : null]
+  const boot = [image.hasUefiBoot ? 'UEFI' : null, image.hasBiosBoot ? 'Legacy BIOS' : null, image.target.os === 'macos' ? t('appleBoot') : null]
     .filter(Boolean)
     .join(' + ');
 
   const rows: { level: 'ok' | 'warn' | 'idle'; k: string; v: string }[] = [
     {
       level: conf >= 0.7 ? 'ok' : 'warn',
-      k: '镜像识别',
-      v: `${image.target.version.startsWith(image.target.osLabel) ? image.target.version : `${image.target.osLabel} ${image.target.version}`} · 置信度 ${Math.round(conf * 100)}%`,
+      k: t('imageDetect'),
+      v: `${image.target.version.startsWith(image.target.osLabel) ? image.target.version : `${image.target.osLabel} ${image.target.version}`} · ${t('confPct', { p: Math.round(conf * 100) })}`,
     },
     {
       level: !device ? 'idle' : device.size >= image.size * 1.02 ? 'ok' : 'warn',
-      k: '容量余量',
-      v: device ? `${gb(device.size)} 设备 / ${gb(image.size)} 镜像` : '等待选择目标设备',
+      k: t('capacity'),
+      v: device ? t('deviceVsImage', { d: gb(device.size), i: gb(image.size) }) : t('waitDevice'),
     },
-    { level: boot ? 'ok' : 'warn', k: '引导能力', v: boot || '未知，将按原始镜像结构写入' },
-    { level: 'ok', k: '系统盘防护', v: '已启用 · 系统盘与内建盘无法被选中' },
+    { level: boot ? 'ok' : 'warn', k: t('bootCap'), v: boot || t('unknownBootNote') },
+    { level: 'ok', k: t('sysProtect'), v: t('sysProtectOn') },
   ];
 
   return (
     <div className="panel preflight">
       <div className="pf-head">
         <Shield size={13} style={{ color: 'var(--faint)' }} />
-        <span>写入前预检</span>
+        <span>{t('preflight')}</span>
       </div>
       {rows.map((r) => (
         <div className="pf-row" key={r.k}>

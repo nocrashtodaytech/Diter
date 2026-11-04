@@ -1,7 +1,7 @@
 import React from 'react';
 import type { Device, ImageInfo } from '../types';
 import { Alert, Check, Spin } from './Icons';
-import { useI18n } from '../i18n';
+import { useI18n, t } from '../i18n';
 
 export interface Progress {
   pct: number;
@@ -26,9 +26,9 @@ const dur = (s: number) => {
   // 无效值或超过 48 小时一律显示「—」：写入初期速率尚未稳定时 ETA 可能被外推成
   // 几百上千小时，直接展示会吓到用户，这里统一截断为「无法预估」。
   if (!Number.isFinite(s) || s <= 0 || s > 86400 * 2) return '—';
-  if (s < 60) return `${Math.ceil(s)} 秒`;
+  if (s < 60) return t('timeSec', { s: Math.ceil(s) });
   const m = Math.floor(s / 60);
-  return m < 60 ? `${m} 分 ${Math.round(s % 60)} 秒` : `${Math.floor(m / 60)} 时 ${m % 60} 分`;
+  return m < 60 ? t('timeMin', { m, s: Math.round(s % 60) }) : t('timeHour', { h: Math.floor(m / 60), m: m % 60 });
 };
 
 function Spark({ samples }: { samples: number[] }) {
@@ -80,7 +80,7 @@ function Spark({ samples }: { samples: number[] }) {
             />
           </>
         ) : (
-          <line x1="0" y1={H - 12} x2={W} y2={H - 12} stroke="#d0d4da" strokeDasharray="4 5" strokeWidth="1.4" />
+          <line x1="0" y1={H - 12} x2={W} y2={H - 12} stroke="var(--line-2)" strokeDasharray="4 5" strokeWidth="1.4" />
         )}
       </svg>
     </div>
@@ -106,7 +106,7 @@ export function WritingView({
         <div>
           <div className="session-title">{t('writing')}</div>
           <div className="session-sub">
-            {image.fileName} <span style={{ color: '#c2c6cc' }}>→</span> {device.name}
+            {image.fileName} <span style={{ color: 'var(--faint)' }}>→</span> {device.name}
           </div>
         </div>
         <div className="session-phase">
@@ -204,7 +204,7 @@ export function DoneView({
       </div>
       <h2>{t('done')}</h2>
       <p>
-        <strong style={{ color: '#1d1d1f' }}>{device.name}</strong> {t('bootable')}。
+        <strong style={{ color: 'var(--text)' }}>{device.name}</strong> {t('bootable')}
         {result?.note ? <> {result.note}</> : null}
       </p>
 
