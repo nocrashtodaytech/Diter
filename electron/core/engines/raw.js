@@ -19,13 +19,41 @@ const { RateMeter } = require('../util');
 const CHUNK = 64 * 1024 * 1024;
 // 原始设备按 4096 字节块对齐（macOS rdisk / 现代 SSD 的物理块大小）
 const ALIGN = 4096;
+// 多线程模式下每个线程的读写块大小
+const PAR_CHUNK = 8 * 1024 * 1024;
+
+/** 把底层 fs 错误映射成用户可读的中文提示，避免只看到 errno */
+function writeErr(e, written) {
+  if (!e || e.code === 'CANCELLED' || e.code === 'OPEN_FAILED') return e;
+  const map = {
+    EBUSY: '目标设备仍被系统占用（未卸载成功），请拔插 U 盘后重试',
+    EACCES: '权限不足：需要管理员授权才能写入磁盘，请先点击右上角「需要授权」',
+    EPERM: '权限不足：需要管理员授权才能写入磁盘',
+    EROFS: '设备为只读（可能开启了物理写保护开关）',
+    EINVAL: '目标设备不接受该写入方式，请确认设备未被占用',
+    ENOSPC: '目标设备容量不足，请更换更大的 U 盘',
+    EIO: '写入时发生 I/O 错误，U 盘可能存在坏块或已损坏',
+  };
+  const hint = e.code ? map[e.code] : null;
+  if (hint) {
+    e.message = hint;
+  } else if (e.code && (!e.message || /^[A-Z]+:/.test(e.message))) {
+    e.message = `写入 ${Math.floor(written / 1048576)} MB 后失败（${e.code}）：${e.message || '未知错误'}`;
+  }
+  return e;
+}
 
 /**
- * @param {{sourcePath:string,targetNode:string,totalBytes:number,onProgress:Function,signal:AbortSignal}} o
+ * @param {{sourcePath:string,targetNode:string,totalBytes:number,onProgress:Function,signal:AbortSignal,threads?:number}} o
  */
 async function writeRaw(o) {
   const { sourcePath, targetNode, onProgress, signal } = o;
   const total = o.totalBytes || fs.statSync(sourcePath).size;
+  const threads = Math.max(1, Math.floor(o.threads || 1));
+  // 多线程：镜像足够大时才分段并行，否则退回单线程（避免小镜像的开销）
+  if (threads > 1 && total >= ALIGN * 2) {
+    return writeRawParallel({ sourcePath, targetNode, total, onProgress, signal, threads });
+  }
   const src = await fsp.open(sourcePath, 'r');
   let dst;
   try {
@@ -104,25 +132,7 @@ async function writeRaw(o) {
     emit(true);
     return { bytesWritten: written, elapsedSec: (Date.now() - started) / 1000 };
   } catch (e) {
-    // 把底层 fs 错误转成可读信息，避免用户只看到 "写入未完成" 或英文 errno
-    const map = {
-      EBUSY: '目标设备仍被系统占用（未卸载成功），请拔插 U 盘后重试',
-      EACCES: '权限不足：需要管理员授权才能写入磁盘，请先点击右上角「需要授权」',
-      EPERM: '权限不足：需要管理员授权才能写入磁盘',
-      EROFS: '设备为只读（可能开启了物理写保护开关）',
-      EINVAL: '目标设备不接受该写入方式，请确认设备未被占用',
-      ENOSPC: '目标设备容量不足，请更换更大的 U 盘',
-      EIO: '写入时发生 I/O 错误，U 盘可能存在坏块或已损坏',
-    };
-    if (e.code && e.code !== 'CANCELLED' && e.code !== 'OPEN_FAILED') {
-      const hint = map[e.code];
-      if (hint) {
-        e.message = hint;
-      } else if (!e.message || /^[A-Z]+:/.test(e.message)) {
-        e.message = `写入 ${Math.floor(written / 1048576)} MB 后失败（${e.code}）：${e.message || '未知错误'}`;
-      }
-    }
-    throw e;
+    throw writeErr(e, written);
   } finally {
     try {
       await dst.close();
@@ -130,6 +140,80 @@ async function writeRaw(o) {
     try {
       await src.close();
     } catch {}
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 多线程并行写入：把镜像按 4096 对齐切成 N 段，每段用一个 worker 以
+ * 独立 fd + 显式 position（pread/pwrite）读写自己那一段，段间并行以
+ * 充分利用多核与设备多通道；进度用一个共享计数器聚合。
+ * ------------------------------------------------------------------ */
+
+async function writeRawParallel({ sourcePath, targetNode, total, onProgress, signal, threads }) {
+  const aligned = Math.ceil(total / ALIGN) * ALIGN;
+  const segLen = Math.max(ALIGN, Math.ceil(aligned / threads / ALIGN) * ALIGN);
+  const segments = [];
+  for (let start = 0; start < aligned; start += segLen) {
+    segments.push({ start, end: Math.min(aligned, start + segLen) });
+  }
+
+  const meter = new RateMeter(8000);
+  const started = Date.now();
+  let written = 0;
+  let lastEmit = 0;
+
+  const emit = (force) => {
+    const now = Date.now();
+    if (!force && now - lastEmit < 120) return;
+    lastEmit = now;
+    const speed = meter.push(written, now);
+    const eta = meter.eta(Math.max(0, total - written), now);
+    onProgress?.({ bytesWritten: written, totalBytes: total, speed, eta, elapsed: (now - started) / 1000 });
+  };
+
+  const worker = async (seg) => {
+    const buf = Buffer.allocUnsafe(PAR_CHUNK);
+    const src = await fsp.open(sourcePath, 'r');
+    const dst = await fsp.open(targetNode, 'r+');
+    try {
+      let pos = seg.start;
+      while (pos < seg.end) {
+        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        const want = Math.min(PAR_CHUNK, seg.end - pos);
+        const { bytesRead } = await src.read(buf, 0, want, pos);
+        if (bytesRead <= 0) break;
+        // 最后一段读不满时补零到对齐边界（原始设备不接受非对齐写入）
+        let data = buf;
+        let toWrite = bytesRead;
+        if (bytesRead < want) {
+          const padded = Buffer.alloc(want);
+          buf.copy(padded, 0, 0, bytesRead);
+          data = padded;
+          toWrite = want;
+        }
+        let off = 0;
+        while (off < toWrite) {
+          if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+          const { bytesWritten: bw } = await dst.write(data, off, toWrite - off, pos + off);
+          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节，设备可能已断开'), { code: 'EIO' });
+          off += bw;
+        }
+        written += bytesRead;
+        pos += toWrite;
+        emit(false);
+      }
+    } finally {
+      await dst.close().catch(() => {});
+      await src.close().catch(() => {});
+    }
+  };
+
+  try {
+    await Promise.all(segments.map((s) => worker(s)));
+    emit(true);
+    return { bytesWritten: written, elapsedSec: (Date.now() - started) / 1000 };
+  } catch (e) {
+    throw writeErr(e, written);
   }
 }
 

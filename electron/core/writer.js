@@ -7,6 +7,7 @@
  */
 const fs = require('fs');
 const crypto = require('crypto');
+const os = require('os');
 const devices = require('./devices');
 const safety = require('./safety');
 const rawEngine = require('./engines/raw');
@@ -15,6 +16,17 @@ const winMediaEngine = require('./engines/windows-media');
 const linuxEngine = require('./engines/linux');
 
 const jobs = new Map();
+
+/** 解析写入线程数：'auto'/未指定 → 按 CPU 核数取 2~4；显式数字 → 钳制到 1~8 */
+function resolveThreads(threads) {
+  if (threads === 'auto' || threads == null) {
+    const cpu = os.cpus().length || 4;
+    return Math.max(2, Math.min(4, cpu));
+  }
+  const n = parseInt(threads, 10);
+  if (!Number.isFinite(n) || n < 1) return 1;
+  return Math.max(1, Math.min(8, n));
+}
 
 function engineFor(targetOs, imageInfo) {
   const host = process.platform;
@@ -43,12 +55,15 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
   const controller = new AbortController();
   jobs.set(jobId, { controller, startedAt: Date.now() });
 
+  // 解析写入线程数（'auto' / 数字），供各引擎读取
+  options = { ...options, threads: resolveThreads(options.threads) };
+
   const total = imageInfo?.size || fs.statSync(imagePath).size;
   const scale = options.verify ? 0.92 : 1;
 
   const send = (e) => {
     try {
-      emit({ jobId, ...e });
+      emit({ jobId, threads: options.threads, ...e });
     } catch {}
   };
 

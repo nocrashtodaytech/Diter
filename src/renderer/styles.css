@@ -1115,6 +1115,32 @@ body.is-mac .panel {
   max-width: 270px;
 }
 
+/* 写入线程数选择（footer 底栏，复用 lang-seg 风格保持整体形象） */
+.thread-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  -webkit-app-region: no-drag;
+}
+.thread-label {
+  font-size: 12px;
+  color: var(--dim);
+  white-space: nowrap;
+}
+.thread-seg {
+  padding: 2px;
+  border-radius: 9px;
+  gap: 1px;
+}
+.thread-opt {
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 7px;
+  font-size: 12px;
+  min-width: 30px;
+  justify-content: center;
+}
+
 /* 设置面板两层选项卡 */
 .tab-bar {
   display: flex;

@@ -13,6 +13,7 @@ export interface Progress {
   totalBytes: number;
   samples: number[];
   logs: string[];
+  threads?: number;
 }
 
 const bytes = (n: number) => {
@@ -127,7 +128,7 @@ export function WritingView({
         </div>
       </div>
 
-      <div className="stats">
+      <div className="stats" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))' }}>
         <div className="stat">
           <div className="stat-k">{t('writeSpeed')}</div>
           <div className="stat-v" style={{ color: '#0a84ff' }}>
@@ -141,6 +142,12 @@ export function WritingView({
         <div className="stat">
           <div className="stat-k">{t('written')}</div>
           <div className="stat-v">{bytes(progress.bytesWritten)}</div>
+        </div>
+        <div className="stat">
+          <div className="stat-k">{t('concurrency')}</div>
+          <div className="stat-v" style={{ color: '#0a84ff' }}>
+            {progress.threads ? t('threadsCount', { n: progress.threads }) : '—'}
+          </div>
         </div>
         <div className="stat">
           <div className="stat-k">{t('targetDevice')}</div>

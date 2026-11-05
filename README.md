@@ -36,6 +36,7 @@ Diter routes each image to the right engine instead of blindly `dd`-ing:
 - **System-disk protection** — three independent gates; the system disk can't even be selected
 - **Privilege helper** — authorization runs a headless helper, so the main window never restarts and keeps your selections
 - **Post-write verification** — reads the whole drive back and compares SHA-256
+- **Multithreaded writes** — aligned parallel chunked writes for raw images and concurrent file copy for Windows ISOs, with a selectable thread count (Auto / 1 / 2 / 4 / 8)
 - **Appearance** — light, dark, or follow the system theme
 - **Localization** — 6 languages: 简体中文, 繁體中文, English, 한국어, العربية, Русский
 
@@ -68,8 +69,8 @@ using mock data — it never touches a real disk.
 
 | Artifact | Platform | Notes |
 |---|---|---|
-| `Diter-1.0.2-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
-| `Diter-1.0.2-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
+| `Diter-1.0.3-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
+| `Diter-1.0.3-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
 
 Rebuild: `npm run package` (see `build/package.sh`).
 
@@ -98,7 +99,7 @@ Rust/Go dependencies to compile).
 ## Status & roadmap
 
 Done: image detection, disk safety verdicts, write engines, full UI and flow,
-privilege helper, verification.
+privilege helper, verification, multithreaded writes.
 
 Planned: bundle `wimlib`/`ms-sys` into the package; migrate the macOS helper to
 `SMJobBless`; Windows volume locking (`FSCTL_LOCK_VOLUME`).

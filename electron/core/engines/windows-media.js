@@ -119,26 +119,32 @@ function walk(dir, base = dir, acc = []) {
   return acc;
 }
 
-async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBytes }) {
+async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBytes, concurrency = 1 }) {
   const entries = walk(srcRoot);
   const total = entries.reduce((s, e) => s + e.size, 0);
-  let done = 0;
-  const meter = new RateMeter(8000);
-  let lastEmit = 0;
   const dirs = entries.filter((e) => e.dir).sort((a, b) => a.rel.length - b.rel.length);
   for (const d of dirs) await fsp.mkdir(path.join(dstRoot, d.rel), { recursive: true });
 
-  // 异步 I/O：走 libuv 线程池，避免同步循环阻塞事件循环（否则进度事件发不出去、UI 冻结）
-  const buf = Buffer.allocUnsafe(64 * 1024 * 1024);
-  for (const e of entries) {
-    if (e.dir) continue;
-    if (skip.has(e.rel.split(path.sep).join('/').toLowerCase())) continue;
-    if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+  // 待拷贝文件（排除 skip），大文件在前：让 install.wim 这类巨文件尽早占满一个 worker，
+  // 小文件并行填空，避免最后只剩一个大文件时其它 worker 空转。
+  const files = entries
+    .filter((e) => !e.dir && !skip.has(e.rel.split(path.sep).join('/').toLowerCase()))
+    .sort((a, b) => b.size - a.size);
+
+  const meter = new RateMeter(8000);
+  let done = 0;
+  let lastEmit = 0;
+  const limit = Math.max(1, Math.floor(concurrency || 1));
+
+  const copyOne = async (e) => {
     const dst = path.join(dstRoot, e.rel);
     await fsp.mkdir(path.dirname(dst), { recursive: true });
     const inFd = await fsp.open(path.join(srcRoot, e.rel), 'r');
     const outFd = await fsp.open(dst, 'w');
     try {
+      // 异步 I/O：走 libuv 线程池，避免同步循环阻塞事件循环（否则进度事件发不出去、UI 冻结）。
+      // 并发时每个 worker 各持一个 buffer，块大小取 8 MB 以控制总内存（N 线程 × 8 MB）。
+      const buf = Buffer.allocUnsafe(8 * 1024 * 1024);
       let read = 0;
       while (read < e.size) {
         if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
@@ -165,7 +171,19 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
       await outFd.close();
     }
     // 启动盘无需保留源文件时间戳，跳过 utimesSync（在 FAT32 上可能显著拖慢拷贝）
-  }
+  };
+
+  // 并发池：limit 个 worker 同时从队列取文件拷贝
+  const queue = files.slice();
+  const workers = Array.from({ length: Math.min(limit, queue.length) }, async () => {
+    while (queue.length) {
+      const item = queue.shift();
+      if (!item) break;
+      await copyOne(item);
+    }
+  });
+  await Promise.all(workers);
+
   return { files: entries.length, bytes: total };
 }
 
@@ -257,6 +275,7 @@ async function write(ctx) {
         emit,
         signal,
         skip,
+        concurrency: options.threads,
         onBytes: (done, total, speed, eta) => {
           const p = total > 0 ? done / total : 0;
           emit({

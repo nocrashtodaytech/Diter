@@ -62,6 +62,7 @@ async function write(ctx) {
     targetNode,
     totalBytes: total,
     signal,
+    threads: options.threads,
     onProgress: (pr) =>
       emit({
         pct: 0.02 + (pr.bytesWritten / pr.totalBytes) * 0.9,

@@ -44,6 +44,7 @@ export default function App() {
   const [verify, setVerify] = useState(true);
   const [persistence, setPersistence] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
+  const [threads, setThreads] = useState<number | 'auto'>('auto');
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [result, setResult] = useState<any>(null);
@@ -99,6 +100,7 @@ export default function App() {
             eta: ev.eta ?? p.eta,
             bytesWritten: ev.bytesWritten ?? p.bytesWritten,
             totalBytes: ev.totalBytes ?? p.totalBytes,
+            threads: ev.threads ?? p.threads,
           };
           if (typeof ev.speed === 'number' && ev.speed > 0) {
             next.samples = [...p.samples, ev.speed].slice(-120);
@@ -241,7 +243,7 @@ export default function App() {
         imagePath: image.path,
         imageInfo: image,
         device: selected,
-        options: { verify, persistence, allowUnknownBus: allowUnknown },
+        options: { verify, persistence, allowUnknownBus: allowUnknown, threads },
       });
       setJobId(id);
     } catch (e: any) {
@@ -406,6 +408,22 @@ export default function App() {
             <div className={`switch ${verify ? 'on' : ''}`} onClick={() => setVerify(!verify)}>
               <span className="switch-track" />
               <span>{t('verify')}</span>
+            </div>
+
+            <div className="thread-pick">
+              <span className="thread-label">{t('threads')}</span>
+              <div className="lang-seg thread-seg">
+                {(['auto', 1, 2, 4, 8] as const).map((v) => (
+                  <button
+                    key={String(v)}
+                    className={`lang-opt thread-opt ${threads === v ? 'on' : ''}`}
+                    onClick={() => setThreads(v)}
+                    title={v === 'auto' ? t('threadsAutoHint') : undefined}
+                  >
+                    {v === 'auto' ? t('threadsAuto') : v}
+                  </button>
+                ))}
+              </div>
             </div>
 
             <button className="btn primary" disabled={!canStart} onClick={handleStart}>

@@ -131,7 +131,7 @@ export interface StartPayload {
   imagePath: string;
   imageInfo: ImageInfo;
   device: Device;
-  options: { verify: boolean; persistence: boolean; allowUnknownBus: boolean };
+  options: { verify: boolean; persistence: boolean; allowUnknownBus: boolean; threads?: number | 'auto' };
 }
 
 export interface JobEvent {
@@ -144,6 +144,7 @@ export interface JobEvent {
   eta?: number;
   bytesWritten?: number;
   totalBytes?: number;
+  threads?: number;
   result?: any;
   error?: { code: string; message: string; detail?: string };
 }

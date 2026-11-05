@@ -143,6 +143,12 @@ const zh = {
   retryUpdate: '重试',
   noInstallPackage: '当前平台暂无可用安装包',
   later: '稍后',
+  // 多线程写入
+  threads: '写入线程',
+  threadsAuto: '自动',
+  threadsAutoHint: '根据 CPU 自动选择线程数',
+  concurrency: '并发',
+  threadsCount: '{n} 线程',
 };
 
 const zhTW: Record<keyof typeof zh, string> = {
@@ -271,6 +277,11 @@ const zhTW: Record<keyof typeof zh, string> = {
   retryUpdate: '重試',
   noInstallPackage: '目前平台暫無可用安裝包',
   later: '稍後',
+  threads: '寫入執行緒',
+  threadsAuto: '自動',
+  threadsAutoHint: '根據 CPU 自動選擇執行緒數',
+  concurrency: '並行',
+  threadsCount: '{n} 執行緒',
 };
 
 const en: Record<keyof typeof zh, string> = {
@@ -399,6 +410,11 @@ const en: Record<keyof typeof zh, string> = {
   retryUpdate: 'Retry',
   noInstallPackage: 'No installer available for this platform',
   later: 'Later',
+  threads: 'Write threads',
+  threadsAuto: 'Auto',
+  threadsAutoHint: 'Auto-select thread count based on CPU',
+  concurrency: 'Concurrency',
+  threadsCount: '{n} threads',
 };
 
 const ko: Record<keyof typeof zh, string> = {
@@ -527,6 +543,11 @@ const ko: Record<keyof typeof zh, string> = {
   retryUpdate: '다시 시도',
   noInstallPackage: '이 플랫폼용 설치 패키지가 없습니다',
   later: '나중에',
+  threads: '쓰기 스레드',
+  threadsAuto: '자동',
+  threadsAutoHint: 'CPU에 따라 스레드 수 자동 선택',
+  concurrency: '동시성',
+  threadsCount: '{n} 스레드',
 };
 
 const ru: Record<keyof typeof zh, string> = {
@@ -655,6 +676,11 @@ const ru: Record<keyof typeof zh, string> = {
   retryUpdate: 'Повторить',
   noInstallPackage: 'Установщик для этой платформы недоступен',
   later: 'Позже',
+  threads: 'Потоки записи',
+  threadsAuto: 'Авто',
+  threadsAutoHint: 'Автовыбор числа потоков по CPU',
+  concurrency: 'Параллельно',
+  threadsCount: '{n} потоков',
 };
 
 const ar: Record<keyof typeof zh, string> = {
@@ -783,6 +809,11 @@ const ar: Record<keyof typeof zh, string> = {
   retryUpdate: 'إعادة المحاولة',
   noInstallPackage: 'لا يوجد مثبّت متاح لهذه المنصة',
   later: 'لاحقًا',
+  threads: 'خيوط الكتابة',
+  threadsAuto: 'تلقائي',
+  threadsAutoHint: 'تحديد عدد الخيوط تلقائيًا حسب المعالج',
+  concurrency: 'التزامن',
+  threadsCount: '{n} خيوط',
 };
 
 const dict: Record<Lang, Record<keyof typeof zh, string>> = { zh, 'zh-TW': zhTW, en, ko, ru, ar };
