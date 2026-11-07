@@ -125,3 +125,20 @@ export const Cpu = ({ size = 18, style }: P) => (
     <path d="M10 3v3.5M14 3v3.5M10 17.5V21M14 17.5V21M3 10h3.5M3 14h3.5M17.5 10H21M17.5 14H21" />
   </svg>
 );
+
+export const Trash = ({ size = 18, style }: P) => (
+  <svg {...S(size)} style={style}>
+    <path d="M4 7h16" />
+    <path d="M9 7V5.2A1.2 1.2 0 0 1 10.2 4h3.6A1.2 1.2 0 0 1 15 5.2V7" />
+    <path d="M6.5 7l.8 12.1A1.6 1.6 0 0 0 8.9 20.5h6.2a1.6 1.6 0 0 0 1.6-1.4L17.5 7" />
+    <path d="M10 11v6M14 11v6" />
+  </svg>
+);
+
+export const Download = ({ size = 18, style }: P) => (
+  <svg {...S(size)} style={style}>
+    <path d="M12 4v11" />
+    <path d="m7 11 5 5 5-5" />
+    <path d="M5 19.5h14" />
+  </svg>
+);

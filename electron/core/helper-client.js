@@ -128,6 +128,20 @@ async function format({ deviceId }) {
   return { mountPoint: r.mountPoint };
 }
 
+/** 委托 root 助手擦除磁盘 */
+async function erase(payload) {
+  const r = await request({ t: 'erase', payload }, 10000);
+  if (r.t === 'error') throw new Error(r.message);
+  return { jobId: r.jobId };
+}
+
+/** 委托 root 助手备份磁盘到镜像 */
+async function backup(payload) {
+  const r = await request({ t: 'backup', payload }, 10000);
+  if (r.t === 'error') throw new Error(r.message);
+  return { jobId: r.jobId };
+}
+
 /** 弹出设备 */
 async function eject(deviceId) {
   try {
@@ -146,4 +160,4 @@ async function shutdown() {
   } catch {}
 }
 
-module.exports = { setEventHandler, ping, start, cancel, eject, format, shutdown, SOCK };
+module.exports = { setEventHandler, ping, start, cancel, eject, erase, backup, format, shutdown, SOCK };

@@ -17,16 +17,23 @@ ipcRenderer.on('diter:event', (_e, payload) => {
   });
 });
 
-// 菜单触发打开设置/关于面板
-const panelListeners = { settings: new Set(), about: new Set(), update: new Set() };
+// 菜单触发打开设置/关于/更新/历史面板
+const panelListeners = { settings: new Set(), about: new Set(), update: new Set(), history: new Set() };
 ipcRenderer.on('diter:open-settings', () => panelListeners.settings.forEach((fn) => { try { fn(); } catch {} }));
 ipcRenderer.on('diter:open-about', () => panelListeners.about.forEach((fn) => { try { fn(); } catch {} }));
 ipcRenderer.on('diter:open-update', () => panelListeners.update.forEach((fn) => { try { fn(); } catch {} }));
+ipcRenderer.on('diter:open-history', () => panelListeners.history.forEach((fn) => { try { fn(); } catch {} }));
 
 // 更新进度事件
 const updateListeners = new Set();
 ipcRenderer.on('diter:update-progress', (_e, p) => {
   updateListeners.forEach((fn) => { try { fn(p); } catch {} });
+});
+
+// 启动自动检查发现新版本
+const updateAvailableListeners = new Set();
+ipcRenderer.on('diter:update-available', (_e, info) => {
+  updateAvailableListeners.forEach((fn) => { try { fn(info); } catch {} });
 });
 
 contextBridge.exposeInMainWorld('diter', {
@@ -37,6 +44,10 @@ contextBridge.exposeInMainWorld('diter', {
   start: (payload) => ipcRenderer.invoke('diter:start', payload),
   cancel: (jobId) => ipcRenderer.invoke('diter:cancel', jobId),
   eject: (id) => ipcRenderer.invoke('diter:eject', id),
+  erase: (payload) => ipcRenderer.invoke('diter:erase', payload),
+  backup: (payload) => ipcRenderer.invoke('diter:backup', payload),
+  pickSave: (opts) => ipcRenderer.invoke('diter:pick-save', opts),
+  getHistory: () => ipcRenderer.invoke('diter:get-history'),
   requestElevation: () => ipcRenderer.invoke('diter:elevate'),
   assertWritable: (p) => ipcRenderer.invoke('diter:assert-writable', p),
   reveal: (p) => ipcRenderer.invoke('diter:reveal', p),
@@ -72,9 +83,17 @@ contextBridge.exposeInMainWorld('diter', {
     panelListeners.update.add(cb);
     return () => panelListeners.update.delete(cb);
   },
+  onOpenHistory: (cb) => {
+    panelListeners.history.add(cb);
+    return () => panelListeners.history.delete(cb);
+  },
   onUpdateProgress: (cb) => {
     updateListeners.add(cb);
     return () => updateListeners.delete(cb);
+  },
+  onUpdateAvailable: (cb) => {
+    updateAvailableListeners.add(cb);
+    return () => updateAvailableListeners.delete(cb);
   },
   isDesktop: true,
 });

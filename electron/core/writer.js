@@ -120,12 +120,13 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
             targetNode: process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode,
             totalBytes: total,
             signal: controller.signal,
+            threads: options.threads,
             onProgress: (p) =>
               send({
                 kind: 'progress',
                 phase: '校验',
                 pct: 0.93 + (p.read / Math.max(1, p.total)) * 0.06,
-                message: p.stage === 'source' ? '计算源镜像校验值' : `比对设备数据 ${Math.round((p.read / p.total) * 100)}%`,
+                message: `校验数据 ${Math.round((p.read / Math.max(1, p.total)) * 100)}%`,
               }),
           });
           verification = v;
@@ -166,8 +167,124 @@ function cancel(jobId) {
   return true;
 }
 
+/* ------------------------------------------------------------------ *
+ * 磁盘擦除：整盘覆盖写零 / 随机数据（复用 raw 引擎与提权链路）
+ * ------------------------------------------------------------------ */
+async function erase({ device, options = {}, emit }) {
+  const jobId = crypto.randomUUID();
+  const controller = new AbortController();
+  jobs.set(jobId, { controller, startedAt: Date.now() });
+  options = { ...options, threads: resolveThreads(options.threads) };
+
+  const total = device.size;
+  const send = (e) => {
+    try {
+      emit({ jobId, threads: options.threads, ...e });
+    } catch {}
+  };
+
+  (async () => {
+    try {
+      send({ kind: 'phase', phase: '安全检查', pct: 0.01, message: '正在复核目标设备身份' });
+      const mod = devices.impl();
+      const fresh = await safety.revalidate(mod, device.id, device);
+      safety.assertWritable(fresh, 0, options);
+
+      const targetNode = process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode;
+      send({ kind: 'phase', phase: '擦除', pct: 0.02, message: options.method === 'random' ? '随机数据覆盖写入' : '零覆盖写入' });
+      const result = await rawEngine.eraseRaw({
+        targetNode,
+        totalBytes: total,
+        signal: controller.signal,
+        threads: options.threads,
+        random: options.method === 'random',
+        onProgress: (pr) =>
+          send({
+            kind: 'progress',
+            phase: '擦除',
+            pct: 0.02 + (pr.bytesWritten / Math.max(1, pr.totalBytes)) * 0.97,
+            message: `擦除 ${(pr.bytesWritten / 1073741824).toFixed(2)} / ${(pr.totalBytes / 1073741824).toFixed(2)} GB`,
+            speed: pr.speed,
+            eta: pr.eta,
+            bytesWritten: pr.bytesWritten,
+            totalBytes: pr.totalBytes,
+          }),
+      });
+      send({ kind: 'done', pct: 1, result: { mode: 'erase', method: options.method || 'zero', bytesWritten: result.bytesWritten } });
+    } catch (e) {
+      const cancelled = e.code === 'CANCELLED' || controller.signal.aborted;
+      send({
+        kind: cancelled ? 'cancelled' : 'error',
+        error: { code: e.code || 'UNKNOWN', message: e.message, detail: (e.stderr || '').slice(-1200) },
+      });
+    } finally {
+      jobs.delete(jobId);
+    }
+  })();
+
+  return { jobId };
+}
+
+/* ------------------------------------------------------------------ *
+ * 磁盘 → 镜像备份：把整盘读出来写成一个 .img 文件（反向 raw）
+ * ------------------------------------------------------------------ */
+async function backup({ device, targetPath, options = {}, emit }) {
+  const jobId = crypto.randomUUID();
+  const controller = new AbortController();
+  jobs.set(jobId, { controller, startedAt: Date.now() });
+  options = { ...options, threads: resolveThreads(options.threads) };
+
+  const total = device.size;
+  const send = (e) => {
+    try {
+      emit({ jobId, threads: options.threads, ...e });
+    } catch {}
+  };
+
+  (async () => {
+    try {
+      send({ kind: 'phase', phase: '安全检查', pct: 0.01, message: '正在复核目标设备身份' });
+      const mod = devices.impl();
+      const fresh = await safety.revalidate(mod, device.id, device);
+      safety.assertWritable(fresh, 0, options);
+
+      const sourceNode = process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode;
+      send({ kind: 'phase', phase: '备份', pct: 0.02, message: '正在读取设备并写入镜像文件' });
+      const result = await rawEngine.backupRaw({
+        sourceNode,
+        targetPath,
+        totalBytes: total,
+        signal: controller.signal,
+        threads: options.threads,
+        onProgress: (pr) =>
+          send({
+            kind: 'progress',
+            phase: '备份',
+            pct: 0.02 + (pr.bytesWritten / Math.max(1, pr.totalBytes)) * 0.97,
+            message: `备份 ${(pr.bytesWritten / 1073741824).toFixed(2)} / ${(pr.totalBytes / 1073741824).toFixed(2)} GB`,
+            speed: pr.speed,
+            eta: pr.eta,
+            bytesWritten: pr.bytesWritten,
+            totalBytes: pr.totalBytes,
+          }),
+      });
+      send({ kind: 'done', pct: 1, result: { mode: 'backup', bytesWritten: result.bytesWritten, targetPath } });
+    } catch (e) {
+      const cancelled = e.code === 'CANCELLED' || controller.signal.aborted;
+      send({
+        kind: cancelled ? 'cancelled' : 'error',
+        error: { code: e.code || 'UNKNOWN', message: e.message, detail: (e.stderr || '').slice(-1200) },
+      });
+    } finally {
+      jobs.delete(jobId);
+    }
+  })();
+
+  return { jobId };
+}
+
 async function eject(deviceId) {
   return devices.eject(deviceId);
 }
 
-module.exports = { start, cancel, eject, engineFor };
+module.exports = { start, cancel, eject, erase, backup, engineFor };

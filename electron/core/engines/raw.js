@@ -218,36 +218,71 @@ async function writeRawParallel({ sourcePath, targetNode, total, onProgress, sig
 }
 
 /* ------------------------------------------------------------------ *
- * 校验：源文件与设备回读的 SHA-256 比对
+ * 校验：源文件与设备回读的分段并行 SHA-256 比对
+ * 提速手段（沿用多线程写入的思路）：
+ *   1. 源文件哈希与设备回读哈希并行进行（原实现串行，慢一倍）；
+ *   2. 每一边再按 4096 对齐分段、多线程并行 pread + 分段 SHA-256，
+ *      最后对「各段哈希的拼接」再哈希一次得到组合指纹。
+ * 源与设备采用完全相同的分段方式，组合指纹可直接比对（SHA-256 抗碰撞）。
  * ------------------------------------------------------------------ */
 
 const cacheDir = path.join(os.tmpdir(), 'diter-hash-cache');
+// 组合指纹算法版本：与旧的顺序哈希缓存区分，避免读到旧格式结果
+const HASH_VER = 'v2';
 
 function cacheKey(p) {
   const st = fs.statSync(p);
   return crypto
     .createHash('sha1')
-    .update(`${p}:${st.size}:${st.mtimeMs}`)
+    .update(`${HASH_VER}:${p}:${st.size}:${st.mtimeMs}`)
     .digest('hex');
 }
 
-async function hashFd(fd, total, offset, signal, onTick) {
-  const h = crypto.createHash('sha256');
-  const buf = Buffer.allocUnsafe(CHUNK);
-  let read = 0;
-  while (read < total) {
-    if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
-    const want = Math.min(CHUNK, total - read);
-    const { bytesRead } = await fd.read(buf, 0, want, offset + read);
-    if (bytesRead <= 0) break;
-    h.update(buf.subarray(0, bytesRead));
-    read += bytesRead;
-    onTick?.(read);
+/**
+ * 对 path 指向的文件/设备做分段并行 SHA-256，返回组合指纹（hex）。
+ * 每个 worker 用独立 fd + 显式 position（pread），互不干扰。
+ */
+async function hashPathParallel(p, total, { signal, threads = 1, onProgress } = {}) {
+  const n = Math.max(1, Math.floor(threads || 1));
+  const aligned = Math.ceil(total / ALIGN) * ALIGN;
+  const segLen = Math.max(ALIGN, Math.ceil(aligned / n / ALIGN) * ALIGN);
+  const segments = [];
+  for (let start = 0; start < aligned; start += segLen) {
+    segments.push({ start, end: Math.min(aligned, start + segLen) });
   }
-  return h.digest('hex');
+
+  let read = 0;
+  const worker = async (seg) => {
+    const fd = await fsp.open(p, 'r');
+    try {
+      const h = crypto.createHash('sha256');
+      const buf = Buffer.allocUnsafe(PAR_CHUNK);
+      let pos = seg.start;
+      while (pos < seg.end) {
+        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        // 只读到 total，不读末尾对齐补零区
+        const upTo = Math.min(PAR_CHUNK, seg.end - pos, Math.max(0, total - pos));
+        if (upTo <= 0) break;
+        const { bytesRead } = await fd.read(buf, 0, upTo, pos);
+        if (bytesRead <= 0) break;
+        h.update(buf.subarray(0, bytesRead));
+        pos += bytesRead;
+        read += bytesRead;
+        onProgress?.(read);
+      }
+      return h.digest();
+    } finally {
+      await fd.close().catch(() => {});
+    }
+  };
+
+  const digests = await Promise.all(segments.map((s) => worker(s)));
+  const combined = crypto.createHash('sha256');
+  for (const d of digests) combined.update(d);
+  return combined.digest('hex');
 }
 
-async function sha256File(filePath, { signal, onProgress } = {}) {
+async function sha256File(filePath, { signal, threads = 1, onProgress } = {}) {
   try {
     fs.mkdirSync(cacheDir, { recursive: true });
   } catch {}
@@ -258,32 +293,170 @@ async function sha256File(filePath, { signal, onProgress } = {}) {
   } catch {}
 
   const total = fs.statSync(filePath).size;
-  const fd = await fsp.open(filePath, 'r');
+  const hash = await hashPathParallel(filePath, total, { signal, threads, onProgress });
   try {
-    const hash = await hashFd(fd, total, 0, signal, (n) => onProgress?.(n, total));
-    try {
-      fs.writeFileSync(cacheFile, hash);
-    } catch {}
-    return hash;
-  } finally {
-    await fd.close();
-  }
+    fs.writeFileSync(cacheFile, hash);
+  } catch {}
+  return hash;
 }
 
-async function verifyRaw({ sourcePath, targetNode, totalBytes, signal, onProgress }) {
+async function verifyRaw({ sourcePath, targetNode, totalBytes, signal, onProgress, threads = 1 }) {
   const total = totalBytes || fs.statSync(sourcePath).size;
-  onProgress?.({ stage: 'source', read: 0, total });
-  const srcHash = await sha256File(sourcePath, {
-    signal,
-    onProgress: (n) => onProgress?.({ stage: 'source', read: n, total }),
-  });
-  const fd = await fsp.open(targetNode, 'r');
+  const n = Math.max(1, Math.floor(threads || 1));
+  // 源与设备并行回读：聚合进度 = (源已读 + 设备已读) / (2 * total)，单调递增
+  let srcRead = 0;
+  let devRead = 0;
+  const report = () => onProgress?.({ read: srcRead + devRead, total: total * 2 });
+  report();
+
+  const [srcHash, devHash] = await Promise.all([
+    sha256File(sourcePath, {
+      signal,
+      threads: n,
+      onProgress: (r) => {
+        srcRead = r;
+        report();
+      },
+    }),
+    hashPathParallel(targetNode, total, {
+      signal,
+      threads: n,
+      onProgress: (r) => {
+        devRead = r;
+        report();
+      },
+    }),
+  ]);
+  return { ok: srcHash === devHash, srcHash, devHash };
+}
+
+/* ------------------------------------------------------------------ *
+ * 磁盘擦除：整盘覆盖写零 / 随机数据（复用分段并行写入框架）
+ * ------------------------------------------------------------------ */
+
+async function eraseRaw({ targetNode, totalBytes, signal, onProgress, threads = 1, random = false }) {
+  const total = totalBytes;
+  const n = Math.max(1, Math.floor(threads || 1));
+  const aligned = Math.ceil(total / ALIGN) * ALIGN;
+  const segLen = Math.max(ALIGN, Math.ceil(aligned / n / ALIGN) * ALIGN);
+  const segments = [];
+  for (let start = 0; start < aligned; start += segLen) {
+    segments.push({ start, end: Math.min(aligned, start + segLen) });
+  }
+
+  // 覆盖数据：写零用一个零块；写随机则用随机块循环填充
+  const fillBuf = random ? crypto.randomBytes(PAR_CHUNK) : Buffer.alloc(PAR_CHUNK);
+
+  const meter = new RateMeter(8000);
+  const started = Date.now();
+  let written = 0;
+  let lastEmit = 0;
+
+  const emit = (force) => {
+    const now = Date.now();
+    if (!force && now - lastEmit < 120) return;
+    lastEmit = now;
+    const speed = meter.push(written, now);
+    const eta = meter.eta(Math.max(0, total - written), now);
+    onProgress?.({ bytesWritten: written, totalBytes: total, speed, eta, elapsed: (now - started) / 1000 });
+  };
+
+  const worker = async (seg) => {
+    const dst = await fsp.open(targetNode, 'r+');
+    try {
+      let pos = seg.start;
+      while (pos < seg.end) {
+        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        const want = Math.min(PAR_CHUNK, seg.end - pos);
+        let off = 0;
+        while (off < want) {
+          const { bytesWritten: bw } = await dst.write(fillBuf, 0, want - off, pos + off);
+          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节，设备可能已断开'), { code: 'EIO' });
+          off += bw;
+        }
+        written += want;
+        pos += want;
+        emit(false);
+      }
+    } finally {
+      await dst.close().catch(() => {});
+    }
+  };
+
   try {
-    const devHash = await hashFd(fd, total, 0, signal, (n) => onProgress?.({ stage: 'device', read: n, total }));
-    return { ok: srcHash === devHash, srcHash, devHash };
-  } finally {
-    await fd.close();
+    await Promise.all(segments.map((s) => worker(s)));
+    emit(true);
+    return { bytesWritten: written, elapsedSec: (Date.now() - started) / 1000 };
+  } catch (e) {
+    throw writeErr(e, written);
   }
 }
 
-module.exports = { writeRaw, verifyRaw, sha256File, CHUNK };
+/* ------------------------------------------------------------------ *
+ * 磁盘 → 镜像备份：读设备写文件（反向 raw，复用分段并行框架）
+ * ------------------------------------------------------------------ */
+
+async function backupRaw({ sourceNode, targetPath, totalBytes, signal, onProgress, threads = 1 }) {
+  const total = totalBytes;
+  const n = Math.max(1, Math.floor(threads || 1));
+  const aligned = Math.ceil(total / ALIGN) * ALIGN;
+  const segLen = Math.max(ALIGN, Math.ceil(aligned / n / ALIGN) * ALIGN);
+  const segments = [];
+  for (let start = 0; start < aligned; start += segLen) {
+    segments.push({ start, end: Math.min(aligned, start + segLen) });
+  }
+
+  const meter = new RateMeter(8000);
+  const started = Date.now();
+  let written = 0;
+  let lastEmit = 0;
+
+  const emit = (force) => {
+    const now = Date.now();
+    if (!force && now - lastEmit < 120) return;
+    lastEmit = now;
+    const speed = meter.push(written, now);
+    const eta = meter.eta(Math.max(0, total - written), now);
+    onProgress?.({ bytesWritten: written, totalBytes: total, speed, eta, elapsed: (now - started) / 1000 });
+  };
+
+  const worker = async (seg) => {
+    const src = await fsp.open(sourceNode, 'r');
+    const dst = await fsp.open(targetPath, 'r+');
+    try {
+      const buf = Buffer.allocUnsafe(PAR_CHUNK);
+      let pos = seg.start;
+      while (pos < seg.end) {
+        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        const want = Math.min(PAR_CHUNK, seg.end - pos);
+        // 只读真实数据，不读末尾对齐补零区
+        const upTo = Math.min(want, Math.max(0, total - pos));
+        if (upTo <= 0) break;
+        const { bytesRead } = await src.read(buf, 0, upTo, pos);
+        if (bytesRead <= 0) break;
+        let off = 0;
+        while (off < bytesRead) {
+          const { bytesWritten: bw } = await dst.write(buf, off, bytesRead - off, pos + off);
+          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节'), { code: 'EIO' });
+          off += bw;
+        }
+        written += bytesRead;
+        pos += bytesRead;
+        emit(false);
+      }
+    } finally {
+      await dst.close().catch(() => {});
+      await src.close().catch(() => {});
+    }
+  };
+
+  try {
+    await Promise.all(segments.map((s) => worker(s)));
+    emit(true);
+    return { bytesWritten: written, elapsedSec: (Date.now() - started) / 1000 };
+  } catch (e) {
+    throw writeErr(e, written);
+  }
+}
+
+module.exports = { writeRaw, verifyRaw, sha256File, eraseRaw, backupRaw, CHUNK };

@@ -155,6 +155,7 @@ const MENU = {
   file: { zh: '文件', 'zh-TW': '檔案', en: 'File', ko: '파일', ru: 'Файл', ar: 'ملف' },
   quit: { zh: '退出', 'zh-TW': '退出', en: 'Exit', ko: '종료', ru: 'Выход', ar: 'خروج' },
   help: { zh: '帮助', 'zh-TW': '說明', en: 'Help', ko: '도움말', ru: 'Справка', ar: 'تعليمات' },
+  history: { zh: '历史记录…', 'zh-TW': '歷史記錄…', en: 'History…', ko: '기록…', ru: 'История…', ar: 'السجل…' },
 };
 
 const M = (key, lang) => (MENU[key] && (MENU[key][lang] || MENU[key].en)) || key;
@@ -165,6 +166,7 @@ function buildMenu(lang) {
   const openSettings = () => sendToWin('diter:open-settings');
   const openAbout = () => sendToWin('diter:open-about');
   const openUpdate = () => sendToWin('diter:open-update');
+  const openHistory = () => sendToWin('diter:open-history');
 
   const template = [
     ...(isMac
@@ -176,6 +178,7 @@ function buildMenu(lang) {
               { label: M('checkUpdate', lang), click: openUpdate },
               { type: 'separator' },
               { label: M('settings', lang), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { label: M('history', lang), click: openHistory },
               { type: 'separator' },
               { role: 'hide', label: M('hideDiter', lang) },
               { role: 'hideOthers', label: M('hideOthers', lang) },
@@ -190,6 +193,7 @@ function buildMenu(lang) {
             label: M('file', lang),
             submenu: [
               { label: M('settings', lang), accelerator: 'CmdOrCtrl+,', click: openSettings },
+              { label: M('history', lang), click: openHistory },
               { type: 'separator' },
               { role: 'quit', label: M('quit', lang) },
             ],
@@ -210,8 +214,78 @@ function buildMenu(lang) {
 // 本地（主进程内）执行的写入任务 id —— cancel 时要区分走 writer 还是 helper
 const localJobs = new Set();
 
-/** 统一事件出口：任务终结时清理本地任务记录并卸载预挂载的镜像 */
+/* ----------------------------- 任务历史 / 日志 ----------------------------- */
+
+const jobLogs = new Map(); // jobId -> { lines: string[] }
+const HISTORY_FILE = () => path.join(app.getPath('userData'), 'history.json');
+const LOGS_DIR = () => path.join(app.getPath('userData'), 'logs');
+
+function logLine(e) {
+  const ts = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  switch (e.kind) {
+    case 'phase':
+      return `${ts} [${e.phase || '阶段'}] ${e.message || ''}`;
+    case 'progress':
+      return `${ts} [${e.phase || '进度'}] ${Math.round((e.pct || 0) * 100)}% ${e.message || ''}`;
+    case 'log':
+      return `${ts} [信息] ${e.message || ''}`;
+    case 'error':
+      return `${ts} [错误] ${e.error?.code || 'UNKNOWN'} ${e.error?.message || ''}`;
+    case 'done':
+      return `${ts} [完成]`;
+    case 'cancelled':
+      return `${ts} [已取消]`;
+    default:
+      return '';
+  }
+}
+
+function typeFromResult(e) {
+  const m = e?.result?.mode;
+  if (m === 'erase') return 'erase';
+  if (m === 'backup') return 'backup';
+  return 'write';
+}
+
+/** 任务终结时把完整日志落盘，并写入历史记录（最多保留 50 条） */
+function saveHistory(e, rec) {
+  try {
+    fs.mkdirSync(LOGS_DIR(), { recursive: true });
+    const logFile = path.join(LOGS_DIR(), `${Date.now()}-${(e.jobId || 'x').slice(0, 8)}.log`);
+    fs.writeFileSync(logFile, rec.lines.join('\n') + '\n');
+
+    let hist = [];
+    try {
+      hist = JSON.parse(fs.readFileSync(HISTORY_FILE(), 'utf8'));
+      if (!Array.isArray(hist)) hist = [];
+    } catch {}
+    hist.unshift({
+      id: e.jobId,
+      time: Date.now(),
+      type: typeFromResult(e),
+      result: e.kind === 'done' ? 'success' : e.kind === 'cancelled' ? 'cancelled' : 'error',
+      error: e.kind === 'error' ? e.error?.message || e.error?.code || '' : '',
+      logFile,
+    });
+    fs.writeFileSync(HISTORY_FILE(), JSON.stringify(hist.slice(0, 50), null, 2));
+  } catch {}
+}
+
+/** 统一事件出口：收集日志、任务终结时清理本地任务记录并卸载预挂载的镜像 */
 function onAnyEvent(e) {
+  if (e?.jobId) {
+    let rec = jobLogs.get(e.jobId);
+    if (!rec) {
+      rec = { lines: [] };
+      jobLogs.set(e.jobId, rec);
+    }
+    const line = logLine(e);
+    if (line) rec.lines.push(line);
+    if (e.kind === 'done' || e.kind === 'error' || e.kind === 'cancelled') {
+      saveHistory(e, rec);
+      jobLogs.delete(e.jobId);
+    }
+  }
   if (e?.jobId && (e.kind === 'done' || e.kind === 'error' || e.kind === 'cancelled')) {
     localJobs.delete(e.jobId);
     const m = pendingMounts.get(e.jobId);
@@ -250,6 +324,19 @@ if (elevation.isHelper()) {
       buildMenu(loadLanguage());
       createWindow();
       helper.setEventHandler(onAnyEvent);
+
+      // 启动后延迟自动检查更新：有新版本则通知前端弹出更新面板
+      setTimeout(() => {
+        updater
+          .check()
+          .then((info) => {
+            if (info && info.hasUpdate && win && !win.isDestroyed()) {
+              win.webContents.send('diter:update-available', info);
+            }
+          })
+          .catch(() => {});
+      }, 8000);
+
       app.on('activate', () => {
         if (BrowserWindow.getAllWindows().length === 0) createWindow();
       });
@@ -316,14 +403,14 @@ ipcMain.handle('diter:devices', async (_e, opts = {}) => {
 ipcMain.handle('diter:pick-image', async () => {
   const res = await dialog.showOpenDialog(win, {
     title: '选择系统镜像',
-    properties: ['openFile'],
+    properties: ['openFile', 'multiSelections'],
     filters: [
       { name: '系统镜像', extensions: ['iso', 'img', 'dmg', 'cdr', 'app', 'raw', 'bin'] },
       { name: '全部文件', extensions: ['*'] },
     ],
   });
-  if (res.canceled || !res.filePaths.length) return null;
-  return res.filePaths[0];
+  if (res.canceled || !res.filePaths.length) return [];
+  return res.filePaths;
 });
 
 ipcMain.handle('diter:probe', async (_e, imagePath) => {
@@ -424,6 +511,39 @@ ipcMain.handle('diter:eject', async (_e, deviceId) => {
   return writer.eject(deviceId);
 });
 
+/* ----------------------------- 磁盘工具：擦除 / 备份 ----------------------------- */
+
+ipcMain.handle('diter:pick-save', async (_e, { defaultName } = {}) => {
+  const res = await dialog.showSaveDialog(win, {
+    title: '保存磁盘镜像',
+    defaultPath: defaultName || 'disk-backup.img',
+    filters: [
+      { name: '磁盘镜像', extensions: ['img', 'raw', 'bin'] },
+      { name: '全部文件', extensions: ['*'] },
+    ],
+  });
+  if (res.canceled || !res.filePath) return null;
+  return res.filePath;
+});
+
+ipcMain.handle('diter:erase', async (_e, payload) => {
+  if (await helper.ping()) {
+    return helper.erase(payload);
+  }
+  const started = await writer.erase({ ...payload, emit: onAnyEvent });
+  if (started?.jobId) localJobs.add(started.jobId);
+  return started;
+});
+
+ipcMain.handle('diter:backup', async (_e, payload) => {
+  if (await helper.ping()) {
+    return helper.backup(payload);
+  }
+  const started = await writer.backup({ ...payload, emit: onAnyEvent });
+  if (started?.jobId) localJobs.add(started.jobId);
+  return started;
+});
+
 ipcMain.handle('diter:elevate', async () => {
   // 若助手已在运行（例如上次授权残留），直接返回成功
   if (await helper.ping()) return { ok: true };
@@ -452,6 +572,14 @@ ipcMain.handle('diter:assert-writable', async (_e, { device, imageSize, allowUnk
   }
 });
 ipcMain.handle('diter:reveal', async (_e, p) => shell.showItemInFolder(p));
+ipcMain.handle('diter:get-history', () => {
+  try {
+    const hist = JSON.parse(fs.readFileSync(HISTORY_FILE(), 'utf8'));
+    return Array.isArray(hist) ? hist : [];
+  } catch {
+    return [];
+  }
+});
 ipcMain.handle('diter:open-external', async (_e, url) => {
   if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
 });

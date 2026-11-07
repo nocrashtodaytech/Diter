@@ -149,14 +149,27 @@ export interface JobEvent {
   error?: { code: string; message: string; detail?: string };
 }
 
+export interface HistoryEntry {
+  id: string;
+  time: number;
+  type: 'write' | 'erase' | 'backup';
+  result: 'success' | 'error' | 'cancelled';
+  error?: string;
+  logFile: string;
+}
+
 export interface DiterApi {
   boot(): Promise<BootInfo>;
   listDevices(opts: { imageSize: number; allowUnknownBus: boolean }): Promise<DeviceListResult>;
-  pickImage(): Promise<string | null>;
+  pickImage(): Promise<string[]>;
   probeImage(path: string): Promise<ImageInfo>;
   start(payload: StartPayload): Promise<{ jobId: string }>;
   cancel(jobId: string): Promise<boolean>;
   eject(deviceId: string): Promise<{ ok: boolean; stderr?: string }>;
+  erase(payload: { device: Device; options: { method?: 'zero' | 'random'; threads?: number | 'auto' } }): Promise<{ jobId: string }>;
+  backup(payload: { device: Device; targetPath: string; options: { threads?: number | 'auto' } }): Promise<{ jobId: string }>;
+  pickSave(opts: { defaultName?: string }): Promise<string | null>;
+  getHistory(): Promise<HistoryEntry[]>;
   requestElevation(): Promise<{ ok: boolean; message?: string }>;
   assertWritable(p: { device: Device; imageSize: number; allowUnknownBus: boolean }): Promise<any>;
   reveal(path: string): Promise<void>;
@@ -174,6 +187,8 @@ export interface DiterApi {
   onOpenSettings(cb: () => void): () => void;
   onOpenAbout(cb: () => void): () => void;
   onOpenUpdate(cb: () => void): () => void;
+  onOpenHistory(cb: () => void): () => void;
   onUpdateProgress(cb: (p: UpdateProgress) => void): () => void;
+  onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
   isDesktop: boolean;
 }

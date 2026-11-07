@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Device } from '../types';
-import { Check, Disc, Lock, Usb, Cpu } from './Icons';
+import { Check, Disc, Lock, Usb, Cpu, Trash, Download } from './Icons';
 import { useI18n } from '../i18n';
 
 const gb = (n: number) => {
@@ -20,11 +20,15 @@ export function DeviceList({
   selectedId,
   onSelect,
   scanning,
+  onErase,
+  onBackup,
 }: {
   devices: Device[];
   selectedId: string | null;
   onSelect: (d: Device) => void;
   scanning: boolean;
+  onErase: (d: Device) => void;
+  onBackup: (d: Device) => void;
 }) {
   const { t } = useI18n();
   const safe = devices.filter((d) => d.selectable);
@@ -100,6 +104,16 @@ export function DeviceList({
                 <span className="tag warn">{t('tightCapacity')}</span>
               ) : (
                 <span className="tag safe">{t('writable')}</span>
+              )}
+              {!isLocked && (
+                <div className="device-tools" onClick={(e) => e.stopPropagation()}>
+                  <button className="tool-btn" title={t('backup')} onClick={() => onBackup(d)}>
+                    <Download size={13} />
+                  </button>
+                  <button className="tool-btn danger" title={t('erase')} onClick={() => onErase(d)}>
+                    <Trash size={13} />
+                  </button>
+                </div>
               )}
             </div>
           </div>

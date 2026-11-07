@@ -93,11 +93,13 @@ export function WritingView({
   image,
   device,
   onCancel,
+  label,
 }: {
   progress: Progress;
-  image: ImageInfo;
+  image?: ImageInfo | null;
   device: Device;
   onCancel: () => void;
+  label?: string;
 }) {
   const pct = Math.round(progress.pct * 1000) / 10;
   const { t } = useI18n();
@@ -105,9 +107,14 @@ export function WritingView({
     <div className="session">
       <div className="session-head">
         <div>
-          <div className="session-title">{t('writing')}</div>
+          <div className="session-title">{label || t('writing')}</div>
           <div className="session-sub">
-            {image.fileName} <span style={{ color: 'var(--faint)' }}>→</span> {device.name}
+            {image ? (
+              <>
+                {image.fileName} <span style={{ color: 'var(--faint)' }}>→</span>{' '}
+              </>
+            ) : null}
+            {device.name}
           </div>
         </div>
         <div className="session-phase">
@@ -123,7 +130,7 @@ export function WritingView({
         <div className="progress-line">
           <span className="progress-message">{progress.message || progress.phase}</span>
           <span className="progress-bytes">
-            {bytes(progress.bytesWritten)} / {bytes(progress.totalBytes || image.size)}
+            {bytes(progress.bytesWritten)} / {bytes(progress.totalBytes || image?.size || 0)}
           </span>
         </div>
       </div>
@@ -185,12 +192,14 @@ export function DoneView({
   elapsedSec = 0,
   onEject,
   onAgain,
+  label,
 }: {
   result: any;
   device: Device;
   elapsedSec?: number;
   onEject: () => void;
   onAgain: () => void;
+  label?: string;
 }) {
   const { t } = useI18n();
   const v = result?.verification;
@@ -209,7 +218,7 @@ export function DoneView({
       <div className="result-orb ok">
         <Check size={36} style={{ color: 'var(--ok)' }} />
       </div>
-      <h2>{t('done')}</h2>
+      <h2>{label || t('done')}</h2>
       <p>
         <strong style={{ color: 'var(--text)' }}>{device.name}</strong> {t('bootable')}
         {result?.note ? <> {result.note}</> : null}
@@ -270,10 +279,12 @@ export function ErrorView({
   error,
   onBack,
   device,
+  label,
 }: {
   error: { code: string; message: string; detail?: string };
   onBack: () => void;
   device?: Device | null;
+  label?: string;
 }) {
   const { t } = useI18n();
   return (
@@ -281,7 +292,7 @@ export function ErrorView({
       <div className="result-orb err">
         <Alert size={34} style={{ color: 'var(--danger)' }} />
       </div>
-      <h2>{t('writeFailed')}</h2>
+      <h2>{label || t('writeFailed')}</h2>
       <p>{error.message}</p>
       {device && (
         <p style={{ color: 'var(--faint)', fontSize: 11.5 }}>

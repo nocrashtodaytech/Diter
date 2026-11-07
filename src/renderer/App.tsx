@@ -4,12 +4,14 @@ import type { BootInfo, Device, ImageInfo, JobEvent } from './types';
 import { ImagePanel, Preflight } from './components/ImagePanel';
 import { DeviceList } from './components/DeviceList';
 import { ConfirmDialog } from './components/ConfirmDialog';
+import { ToolConfirmDialog } from './components/ToolConfirmDialog';
 import { DoneView, ErrorView, WritingView, type Progress } from './components/Session';
 import { Alert, Drive, Shield, X } from './components/Icons';
 import { useI18n, setLang as applyLang } from './i18n';
 import { About } from './components/About';
 import { Settings } from './components/Settings';
 import { Update } from './components/Update';
+import { History } from './components/History';
 
 type View = 'select' | 'writing' | 'done' | 'error';
 
@@ -31,6 +33,7 @@ export default function App() {
   const { t, lang } = useI18n();
   const [boot, setBoot] = useState<BootInfo | null>(null);
   const [image, setImage] = useState<ImageInfo | null>(null);
+  const [imageQueue, setImageQueue] = useState<ImageInfo[]>([]);
   const [probing, setProbing] = useState(false);
   const [probeError, setProbeError] = useState<string | null>(null);
   const [devices, setDevices] = useState<Device[]>([]);
@@ -41,10 +44,14 @@ export default function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const [verify, setVerify] = useState(true);
   const [persistence, setPersistence] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
   const [threads, setThreads] = useState<number | 'auto'>('auto');
+  const [mode, setMode] = useState<'write' | 'erase' | 'backup'>('write');
+  const [toolConfirm, setToolConfirm] = useState<null | { type: 'erase' | 'backup'; device: Device; meta?: string }>(null);
+  const [toolDevice, setToolDevice] = useState<Device | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
   const [progress, setProgress] = useState<Progress>(EMPTY_PROGRESS);
   const [result, setResult] = useState<any>(null);
@@ -79,10 +86,14 @@ export default function App() {
     const offS = api().onOpenSettings(() => setSettingsOpen(true));
     const offA = api().onOpenAbout(() => setAboutOpen(true));
     const offU = api().onOpenUpdate(() => setUpdateOpen(true));
+    const offH = api().onOpenHistory(() => setHistoryOpen(true));
+    const offUA = api().onUpdateAvailable(() => setUpdateOpen(true));
     return () => {
       offS();
       offA();
       offU();
+      offH();
+      offUA();
     };
   }, []);
 
@@ -156,27 +167,42 @@ export default function App() {
   }, [view, imageSize, allowUnknown]);
 
   /* ---------------------------- 镜像选择 ---------------------------- */
-  const probe = useCallback(async (path: string) => {
-    if (!path) return;
-    setProbing(true);
-    setProbeError(null);
-    try {
-      const info = await api().probeImage(path);
-      if (!info || info.ok === false) {
-        setProbeError((info as any)?.error || t('parseFailed'));
-      } else {
-        setImage(info);
-      }
-    } catch (e: any) {
-      setProbeError(e?.message || t('parseFailed'));
-    } finally {
-      setProbing(false);
-    }
+  const addToQueue = useCallback((info: ImageInfo) => {
+    setImageQueue((q) => (q.some((x) => x.path === info.path) ? q : [...q, info]));
+    setImage(info);
   }, []);
 
+  const removeImage = useCallback((info: ImageInfo) => {
+    setImageQueue((q) => q.filter((x) => x.path !== info.path));
+    setImage((cur) => (cur && cur.path === info.path ? null : cur));
+  }, []);
+
+  const probe = useCallback(
+    async (path: string) => {
+      if (!path) return;
+      setProbing(true);
+      setProbeError(null);
+      try {
+        const info = await api().probeImage(path);
+        if (!info || info.ok === false) {
+          setProbeError((info as any)?.error || t('parseFailed'));
+        } else {
+          addToQueue(info);
+        }
+      } catch (e: any) {
+        setProbeError(e?.message || t('parseFailed'));
+      } finally {
+        setProbing(false);
+      }
+    },
+    [addToQueue],
+  );
+
   const pick = useCallback(async () => {
-    const p = await api().pickImage();
-    if (p) probe(p);
+    const paths = await api().pickImage();
+    if (paths && paths.length) {
+      for (const p of paths) await probe(p);
+    }
   }, [probe]);
 
   /* ---------------------------- 拖放 ---------------------------- */
@@ -199,16 +225,18 @@ export default function App() {
       e.preventDefault();
       dragDepth.current = 0;
       setDragActive(false);
-      const file = e.dataTransfer?.files?.[0];
-      if (!file) return;
-      const p = api().pathForFile(file);
-      const legacy = (file as any).path;
-      if (p) {
-        probe(p);
-      } else if (legacy) {
-        probe(legacy);
-      } else {
-        setProbeError(t('dropPathFailed', { name: file.name }));
+      const files = e.dataTransfer?.files;
+      if (!files || !files.length) return;
+      for (const file of Array.from(files)) {
+        const p = api().pathForFile(file);
+        const legacy = (file as any).path;
+        if (p) {
+          probe(p);
+        } else if (legacy) {
+          probe(legacy);
+        } else {
+          setProbeError(t('dropPathFailed', { name: file.name }));
+        }
       }
     };
     window.addEventListener('dragenter', onDragEnter);
@@ -235,6 +263,8 @@ export default function App() {
   const doStart = async () => {
     if (!image || !selected) return;
     setConfirmOpen(false);
+    setMode('write');
+    setToolDevice(null);
     setProgress({ ...EMPTY_PROGRESS, totalBytes: image.size, logs: [t('startWrite')] });
     startedAt.current = Date.now();
     setView('writing');
@@ -246,6 +276,41 @@ export default function App() {
         options: { verify, persistence, allowUnknownBus: allowUnknown, threads },
       });
       setJobId(id);
+    } catch (e: any) {
+      setError({ code: 'START_FAILED', message: e?.message || t('startFailed') });
+      setView('error');
+    }
+  };
+
+  /* ---------------------------- 磁盘工具：擦除 / 备份 ---------------------------- */
+
+  const handleErase = (device: Device) => {
+    setToolConfirm({ type: 'erase', device });
+  };
+
+  const handleBackup = async (device: Device) => {
+    const path = await api().pickSave({ defaultName: `${device.name || 'disk'}-backup.img` });
+    if (!path) return;
+    setToolConfirm({ type: 'backup', device, meta: path });
+  };
+
+  const doTool = async () => {
+    if (!toolConfirm) return;
+    const { type, device, meta } = toolConfirm;
+    setToolConfirm(null);
+    setToolDevice(device);
+    setMode(type);
+    setProgress({ ...EMPTY_PROGRESS, totalBytes: device.size });
+    startedAt.current = Date.now();
+    setView('writing');
+    try {
+      if (type === 'erase') {
+        const { jobId: id } = await api().erase({ device, options: { method: 'zero', threads } });
+        setJobId(id);
+      } else {
+        const { jobId: id } = await api().backup({ device, targetPath: meta || '', options: { threads } });
+        setJobId(id);
+      }
     } catch (e: any) {
       setError({ code: 'START_FAILED', message: e?.message || t('startFailed') });
       setView('error');
@@ -268,6 +333,8 @@ export default function App() {
     setResult(null);
     setError(null);
     setProgress(EMPTY_PROGRESS);
+    setMode('write');
+    setToolDevice(null);
   };
 
   const requestElevation = async () => {
@@ -342,7 +409,13 @@ export default function App() {
                 <span className="section-title">{t('sectionImage')}</span>
                 <span className="spacer" />
                 {image && (
-                  <button className="btn ghost sm" onClick={() => { setImage(null); setProbeError(null); }}>
+                  <button
+                    className="btn ghost sm"
+                    onClick={() => {
+                      removeImage(image);
+                      setProbeError(null);
+                    }}
+                  >
                     {t('clear')}
                   </button>
                 )}
@@ -350,10 +423,38 @@ export default function App() {
               <ImagePanel
                 image={image}
                 onPick={pick}
-                onClear={() => setImage(null)}
+                onClear={() => image && removeImage(image)}
                 dragActive={dragActive}
                 loading={probing}
               />
+              {imageQueue.length > 1 && (
+                <div className="queue">
+                  <div className="queue-label">
+                    {t('queue')} · {imageQueue.length}
+                  </div>
+                  <div className="queue-items">
+                    {imageQueue.map((q) => (
+                      <div
+                        key={q.path}
+                        className={`queue-item ${image?.path === q.path ? 'on' : ''}`}
+                        onClick={() => setImage(q)}
+                        title={q.fileName}
+                      >
+                        <span className="queue-name">{q.fileName}</span>
+                        <button
+                          className="queue-x"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeImage(q);
+                          }}
+                        >
+                          <X size={11} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {image && <Preflight image={image} device={selected} />}
               <div className="scope-line">
                 <span>{t('scope')}</span>
@@ -385,6 +486,8 @@ export default function App() {
                 selectedId={selectedId}
                 onSelect={(d) => setSelectedId(d.id)}
                 scanning={scanning}
+                onErase={handleErase}
+                onBackup={handleBackup}
               />
             </div>
           </div>
@@ -433,15 +536,35 @@ export default function App() {
         </>
       )}
 
-      {view === 'writing' && image && selected && (
-        <WritingView progress={progress} image={image} device={selected} onCancel={cancel} />
+      {view === 'writing' && (mode === 'write' ? image && selected : toolDevice) && (
+        <WritingView
+          progress={progress}
+          image={mode === 'write' ? image : null}
+          device={mode === 'write' ? selected : toolDevice!}
+          onCancel={cancel}
+          label={mode === 'erase' ? t('erase') : mode === 'backup' ? t('backup') : undefined}
+        />
       )}
 
-      {view === 'done' && selected && (
-        <DoneView result={result} device={selected} elapsedSec={elapsed} onEject={eject} onAgain={reset} />
+      {view === 'done' && (mode === 'write' ? selected : toolDevice) && (
+        <DoneView
+          result={result}
+          device={mode === 'write' ? selected : toolDevice!}
+          elapsedSec={elapsed}
+          onEject={eject}
+          onAgain={reset}
+          label={mode === 'erase' ? t('eraseDone') : mode === 'backup' ? t('backupDone') : undefined}
+        />
       )}
 
-      {view === 'error' && <ErrorView error={error} device={selected} onBack={reset} />}
+      {view === 'error' && (
+        <ErrorView
+          error={error}
+          device={mode === 'write' ? selected : toolDevice}
+          onBack={reset}
+          label={mode === 'write' ? undefined : t('opFailed')}
+        />
+      )}
 
       {confirmOpen && image && selected && (
         <ConfirmDialog
@@ -456,6 +579,19 @@ export default function App() {
         />
       )}
 
+      {toolConfirm && (
+        <ToolConfirmDialog
+          title={toolConfirm.type === 'erase' ? t('eraseTitle') : t('backupTitle')}
+          desc={toolConfirm.type === 'erase' ? t('eraseDesc') : t('backupDesc')}
+          device={toolConfirm.device}
+          meta={toolConfirm.meta}
+          checkLabel={t('confirmCheck')}
+          danger={toolConfirm.type === 'erase'}
+          onCancel={() => setToolConfirm(null)}
+          onConfirm={doTool}
+        />
+      )}
+
       {dragActive && (
         <div className="drag-veil">
           <span>{t('dropVeil')}</span>
@@ -465,6 +601,7 @@ export default function App() {
       {settingsOpen && <Settings onClose={() => setSettingsOpen(false)} />}
       {aboutOpen && <About version={boot?.version || '1.0.0'} onClose={() => setAboutOpen(false)} />}
       {updateOpen && <Update onClose={() => setUpdateOpen(false)} />}
+      {historyOpen && <History onClose={() => setHistoryOpen(false)} />}
     </div>
   );
 }

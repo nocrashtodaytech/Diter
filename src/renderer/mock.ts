@@ -104,7 +104,7 @@ export function createMock(): DiterApi {
   let listeners = new Set<(e: JobEvent) => void>();
   const emit = (e: JobEvent) => listeners.forEach((fn) => fn(e));
   let timer: any = null;
-  const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>(), update: new Set<() => void>() };
+  const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>(), update: new Set<() => void>(), history: new Set<() => void>() };
   const updateListeners = new Set<(p: any) => void>();
   let mockLang: Lang = 'zh';
 
@@ -124,7 +124,7 @@ export function createMock(): DiterApi {
       };
     },
     async pickImage() {
-      return '/Users/ryan/Downloads/Win11_24H2_Chinese_Simplified_x64.iso';
+      return ['/Users/ryan/Downloads/Win11_24H2_Chinese_Simplified_x64.iso'];
     },
     async probeImage(path: string) {
       return probe(path);
@@ -201,6 +201,15 @@ export function createMock(): DiterApi {
     async eject() {
       return { ok: true };
     },
+    async erase() {
+      return { jobId: 'mock-erase' };
+    },
+    async backup() {
+      return { jobId: 'mock-backup' };
+    },
+    async pickSave() {
+      return '/Users/ryan/Downloads/disk-backup.img';
+    },
     async requestElevation() {
       return { ok: true };
     },
@@ -246,9 +255,19 @@ export function createMock(): DiterApi {
       panelListeners.update.add(cb);
       return () => panelListeners.update.delete(cb);
     },
+    onOpenHistory(cb) {
+      panelListeners.history.add(cb);
+      return () => panelListeners.history.delete(cb);
+    },
+    async getHistory() {
+      return [];
+    },
     onUpdateProgress(cb) {
       updateListeners.add(cb);
       return () => updateListeners.delete(cb);
+    },
+    onUpdateAvailable() {
+      return () => {};
     },
     async checkUpdate() {
       return { ok: true, hasUpdate: false, current: '1.0.0', latest: '1.0.0' };

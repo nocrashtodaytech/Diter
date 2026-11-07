@@ -44,6 +44,24 @@ function handle(msg, socket) {
     case 'cancel':
       writer.cancel(msg.jobId);
       break;
+    case 'erase':
+      writer
+        .erase({
+          ...msg.payload,
+          emit: (e) => reply({ t: 'event', event: e }),
+        })
+        .then(({ jobId }) => reply({ t: 'started', id: msg.id, jobId }))
+        .catch((e) => reply({ t: 'error', id: msg.id, message: e.message }));
+      break;
+    case 'backup':
+      writer
+        .backup({
+          ...msg.payload,
+          emit: (e) => reply({ t: 'event', event: e }),
+        })
+        .then(({ jobId }) => reply({ t: 'started', id: msg.id, jobId }))
+        .catch((e) => reply({ t: 'error', id: msg.id, message: e.message }));
+      break;
     case 'format':
       // 只做分区 + 格式化（磁盘管理操作），文件级拷贝由主进程（用户会话）执行
       require('./engines/windows-media')
