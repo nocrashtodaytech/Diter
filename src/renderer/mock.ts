@@ -269,6 +269,12 @@ export function createMock(): DiterApi {
     onUpdateAvailable() {
       return () => {};
     },
+    onUpdateDone() {
+      return () => {};
+    },
+    onUpdateError() {
+      return () => {};
+    },
     async checkUpdate() {
       return { ok: true, hasUpdate: false, current: '1.0.0', latest: '1.0.0' };
     },

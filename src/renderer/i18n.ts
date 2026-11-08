@@ -168,6 +168,7 @@ const zh = {
   failed: '失败',
   cancelled: '已取消',
   queue: '镜像队列',
+  updateBackground: '下载安装将在后台继续，可关闭此窗口',
 };
 
 const zhTW: Record<keyof typeof zh, string> = {
@@ -318,6 +319,7 @@ const zhTW: Record<keyof typeof zh, string> = {
   failed: '失敗',
   cancelled: '已取消',
   queue: '映像佇列',
+  updateBackground: '下載安裝將在背景繼續，可關閉此視窗',
 };
 
 const en: Record<keyof typeof zh, string> = {
@@ -468,6 +470,7 @@ const en: Record<keyof typeof zh, string> = {
   failed: 'Failed',
   cancelled: 'Cancelled',
   queue: 'Image queue',
+  updateBackground: 'Download and install will continue in the background. You can close this window.',
 };
 
 const ko: Record<keyof typeof zh, string> = {
@@ -618,6 +621,7 @@ const ko: Record<keyof typeof zh, string> = {
   failed: '실패',
   cancelled: '취소됨',
   queue: '이미지 대기열',
+  updateBackground: '다운로드 및 설치가 백그라운드에서 계속됩니다. 이 창을 닫아도 됩니다.',
 };
 
 const ru: Record<keyof typeof zh, string> = {
@@ -768,6 +772,7 @@ const ru: Record<keyof typeof zh, string> = {
   failed: 'Не удалось',
   cancelled: 'Отменено',
   queue: 'Очередь образов',
+  updateBackground: 'Загрузка и установка продолжатся в фоновом режиме. Вы можете закрыть это окно.',
 };
 
 const ar: Record<keyof typeof zh, string> = {
@@ -918,6 +923,7 @@ const ar: Record<keyof typeof zh, string> = {
   failed: 'فشل',
   cancelled: 'أُلغي',
   queue: 'قائمة الصور',
+  updateBackground: 'سيستمر التنزيل والتثبيت في الخلفية. يمكنك إغلاق هذه النافذة.',
 };
 
 const dict: Record<Lang, Record<keyof typeof zh, string>> = { zh, 'zh-TW': zhTW, en, ko, ru, ar };

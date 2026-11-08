@@ -60,12 +60,25 @@ export function Update({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     check();
-    const off = api().onUpdateProgress((p) => {
+    const offP = api().onUpdateProgress((p) => {
       setProgress(p);
       if (p.phase === 'downloading') setPhase('downloading');
       else if (p.phase === 'installing') setPhase('installing');
     });
-    return off;
+    const offD = api().onUpdateDone(() => {
+      setPhase('done');
+      setBusy(false);
+    });
+    const offE = api().onUpdateError((err) => {
+      setError(err?.message || t('updateFailed'));
+      setPhase('error');
+      setBusy(false);
+    });
+    return () => {
+      offP();
+      offD();
+      offE();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -75,20 +88,11 @@ export function Update({ onClose }: { onClose: () => void }) {
     setProgress({ phase: 'downloading', pct: 0, received: 0, total: info.asset.size });
     setPhase('downloading');
     try {
-      const r = await api().downloadUpdate(info.asset);
-      if (!r.ok) {
-        setError(r.error || t('updateFailed'));
-        setPhase('error');
-      } else {
-        setPhase('done');
-        if (r.mode === 'restart' || r.mode === 'quit') {
-          api().finishUpdate(r.mode);
-        }
-      }
+      // 后台静默下载 + 安装：此调用立即返回，进度经事件广播，面板可关闭
+      await api().downloadUpdate(info.asset);
     } catch (e: any) {
       setError(e?.message || t('updateFailed'));
       setPhase('error');
-    } finally {
       setBusy(false);
     }
   };
@@ -151,14 +155,11 @@ export function Update({ onClose }: { onClose: () => void }) {
                   {progress ? `${fmtBytes(progress.received)} / ${fmtBytes(progress.total)} · ${pct}%` : ''}
                 </span>
               </div>
+              <div className="setting-hint">{t('updateBackground')}</div>
             </div>
           )}
 
-          {phase === 'done' && (
-            <div className="update-line ok">
-              {t('updateDone')} · {t('willRestart')}
-            </div>
-          )}
+          {phase === 'done' && <div className="update-line ok">{t('updateDone')}</div>}
 
           {phase === 'error' && <div className="update-line err">{error || t('updateFailed')}</div>}
         </div>

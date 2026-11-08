@@ -36,6 +36,16 @@ ipcRenderer.on('diter:update-available', (_e, info) => {
   updateAvailableListeners.forEach((fn) => { try { fn(info); } catch {} });
 });
 
+// 后台下载安装完成 / 失败
+const updateDoneListeners = new Set();
+ipcRenderer.on('diter:update-done', (_e, r) => {
+  updateDoneListeners.forEach((fn) => { try { fn(r); } catch {} });
+});
+const updateErrorListeners = new Set();
+ipcRenderer.on('diter:update-error', (_e, err) => {
+  updateErrorListeners.forEach((fn) => { try { fn(err); } catch {} });
+});
+
 contextBridge.exposeInMainWorld('diter', {
   boot: () => ipcRenderer.invoke('diter:boot'),
   listDevices: (opts) => ipcRenderer.invoke('diter:devices', opts),
@@ -94,6 +104,14 @@ contextBridge.exposeInMainWorld('diter', {
   onUpdateAvailable: (cb) => {
     updateAvailableListeners.add(cb);
     return () => updateAvailableListeners.delete(cb);
+  },
+  onUpdateDone: (cb) => {
+    updateDoneListeners.add(cb);
+    return () => updateDoneListeners.delete(cb);
+  },
+  onUpdateError: (cb) => {
+    updateErrorListeners.add(cb);
+    return () => updateErrorListeners.delete(cb);
   },
   isDesktop: true,
 });

@@ -72,8 +72,8 @@ using mock data — it never touches a real disk.
 
 | Artifact | Platform | Notes |
 |---|---|---|
-| `Diter-2.0.0-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
-| `Diter-2.0.0-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
+| `Diter-2.0.1-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
+| `Diter-2.0.1-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
 
 Rebuild: `npm run package` (see `build/package.sh`).
 

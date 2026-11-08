@@ -596,14 +596,39 @@ ipcMain.handle('diter:check-update', async () => {
 
 ipcMain.handle('diter:download-update', async (_e, asset) => {
   if (!asset || !asset.url) return { ok: false, error: '未找到可下载的安装包' };
-  try {
-    const r = await updater.downloadAndInstall(asset, (p) => {
-      if (win && !win.isDestroyed()) win.webContents.send('diter:update-progress', p);
-    });
-    return { ok: true, ...r };
-  } catch (e) {
-    return { ok: false, error: e.message };
-  }
+  // 后台静默下载 + 安装：不阻塞前端，用户可关闭更新面板继续工作
+  (async () => {
+    try {
+      const r = await updater.downloadAndInstall(asset, (p) => {
+        if (win && !win.isDestroyed()) win.webContents.send('diter:update-progress', p);
+      });
+      if (win && !win.isDestroyed()) win.webContents.send('diter:update-done', r);
+      if (r.mode === 'restart') {
+        // macOS：已复制到 /Applications，弹系统对话框提示重启（可稍后）
+        const res = await dialog.showMessageBox(win, {
+          type: 'info',
+          title: '更新已就绪',
+          message: '新版本已安装完成，重启 Diter 后生效。',
+          detail: '你可以立即重启，或继续使用当前版本，下次启动即为新版本。',
+          buttons: ['立即重启', '稍后'],
+          defaultId: 0,
+          cancelId: 1,
+        });
+        if (res.response === 0) {
+          app.relaunch();
+          app.quit();
+        }
+      } else if (r.mode === 'quit') {
+        // Windows：新进程已启动，旧进程直接退出
+        app.quit();
+      }
+    } catch (e) {
+      if (win && !win.isDestroyed()) {
+        win.webContents.send('diter:update-error', { message: e.message });
+      }
+    }
+  })();
+  return { ok: true, started: true };
 });
 
 ipcMain.handle('diter:finish-update', (_e, mode) => {

@@ -190,5 +190,7 @@ export interface DiterApi {
   onOpenHistory(cb: () => void): () => void;
   onUpdateProgress(cb: (p: UpdateProgress) => void): () => void;
   onUpdateAvailable(cb: (info: UpdateInfo) => void): () => void;
+  onUpdateDone(cb: (r: { mode: string; message?: string }) => void): () => void;
+  onUpdateError(cb: (err: { message: string }) => void): () => void;
   isDesktop: boolean;
 }
