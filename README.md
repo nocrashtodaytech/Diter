@@ -73,8 +73,8 @@ using mock data — it never touches a real disk.
 
 | Artifact | Platform | Notes |
 |---|---|---|
-| `Diter-2.0.3-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
-| `Diter-2.0.3-win-x64-setup.exe` | Windows (x64) | Installer (NSIS) — run it to install like a normal app |
+| `Diter-2.0.2-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
+| `Diter-2.0.2-win-x64-setup.exe` | Windows (x64) | Installer (NSIS) — run it to install like a normal app |
 
 Rebuild: `npm run package` (see `build/package.sh`).
 

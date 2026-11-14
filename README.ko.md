@@ -72,8 +72,8 @@ UI 미리보기(`preview/diter-preview.html`)는 목업 데이터를 사용하�
 
 | 산출물 | 플랫폼 | 비고 |
 |---|---|---|
-| `Diter-2.0.3-mac-x64.dmg` | macOS (x64) | 미서명 — 최초 실행 시 우클릭 → 열기 필요 |
-| `Diter-2.0.3-win-x64-setup.exe` | Windows (x64) | 설치 버전(NSIS) — 실행하여 일반 앱처럼 설치 |
+| `Diter-2.0.2-mac-x64.dmg` | macOS (x64) | 미서명 — 최초 실행 시 우클릭 → 열기 필요 |
+| `Diter-2.0.2-win-x64-setup.exe` | Windows (x64) | 설치 버전(NSIS) — 실행하여 일반 앱처럼 설치 |
 
 재빌드: `npm run package` (`build/package.sh` 참고).
 
