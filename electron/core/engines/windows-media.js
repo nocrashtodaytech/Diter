@@ -111,23 +111,76 @@ async function partition(device, emit) {
 
 /* ------------------------------ 拷贝文件 ------------------------------ */
 
-function walk(dir, base = dir, acc = []) {
-  for (const name of fs.readdirSync(dir)) {
+/**
+ * 遍历挂载镜像的目录树，返回 entries 数组；跳过的断链/循环数累计进 skipped.n。
+ *
+ * 关键：用 lstatSync（不跟随软链接）遍历。HBCD PE 等 Windows PE 镜像的 Programs 目录
+ * 里有大量软链接（有的指向不存在目标），旧实现用 statSync 跟随软链接，遇到断链就抛
+ * ENOENT，导致整个拷贝在 13% 处崩溃。这里改为：
+ *   - 软链接 → 文件：解析后按目标内容拷贝（FAT32 不支持符号链接）；
+ *   - 软链接 → 目录：解析后递归其内容，落盘路径仍是链接所在位置；
+ *   - 断链 / 循环：优雅跳过并计数。
+ */
+function walk(dir, base = dir, acc = [], prefix = '', seen = new Set(), skipped = { n: 0 }) {
+  let names;
+  try {
+    names = fs.readdirSync(dir);
+  } catch {
+    return acc;
+  }
+  for (const name of names) {
     const full = path.join(dir, name);
-    const st = fs.statSync(full);
-    const rel = path.relative(base, full);
+    const rel = prefix ? path.join(prefix, name) : name;
+    let st;
+    try {
+      st = fs.lstatSync(full);
+    } catch {
+      skipped.n += 1;
+      continue;
+    }
+
+    let targetPath = full;
+    let isLink = false;
+    if (st.isSymbolicLink()) {
+      isLink = true;
+      try {
+        targetPath = fs.realpathSync(full);
+      } catch {
+        skipped.n += 1;
+        continue;
+      }
+      try {
+        st = fs.statSync(targetPath);
+      } catch {
+        skipped.n += 1;
+        continue;
+      }
+    }
+
     if (st.isDirectory()) {
+      let canon;
+      try {
+        canon = fs.realpathSync(full);
+      } catch {
+        canon = full;
+      }
+      if (seen.has(canon)) continue; // 防循环
+      seen.add(canon);
       acc.push({ rel, dir: true, size: 0 });
-      walk(full, base, acc);
+      walk(targetPath, base, acc, rel, seen, skipped);
     } else if (st.isFile()) {
-      acc.push({ rel, dir: false, size: st.size });
+      acc.push({ rel, dir: false, size: st.size, ...(isLink ? { src: targetPath } : {}) });
     }
   }
   return acc;
 }
 
 async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBytes, concurrency = 1 }) {
-  const entries = walk(srcRoot);
+  const skipped = { n: 0 };
+  const entries = walk(srcRoot, srcRoot, [], '', new Set(), skipped);
+  if (skipped.n > 0) {
+    emit({ message: `跳过 ${skipped.n} 个无法解析的链接/项目（不影响启动盘制作）` });
+  }
   const total = entries.reduce((s, e) => s + e.size, 0);
   const dirs = entries.filter((e) => e.dir).sort((a, b) => a.rel.length - b.rel.length);
   for (const d of dirs) await fsp.mkdir(path.join(dstRoot, d.rel), { recursive: true });
@@ -146,7 +199,8 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
   const copyOne = async (e) => {
     const dst = path.join(dstRoot, e.rel);
     await fsp.mkdir(path.dirname(dst), { recursive: true });
-    const inFd = await fsp.open(path.join(srcRoot, e.rel), 'r');
+    // 软链接解析后的目标可能位于 srcRoot 之外，用 e.src 指向真实文件
+    const inFd = await fsp.open(e.src || path.join(srcRoot, e.rel), 'r');
     const outFd = await fsp.open(dst, 'w');
     try {
       // 异步 I/O：走 libuv 线程池，避免同步循环阻塞事件循环（否则进度事件发不出去、UI 冻结）。

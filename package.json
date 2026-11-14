@@ -1,7 +1,7 @@
 {
   "name": "diter",
   "productName": "Diter",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Diter · 跨平台 USB 启动盘写入工具（Windows / macOS / Linux）",
   "main": "electron/main.js",
   "author": "Diter",
@@ -31,9 +31,7 @@
     "productName": "Diter",
     "directories": { "output": "release", "buildResources": "assets" },
     "files": ["electron/**/*", "dist/**/*", "package.json"],
-    "extraResources": [
-      { "from": "assets/bin/${os}", "to": "bin", "filter": ["**/*"] }
-    ],
+    "asarUnpack": ["electron/core/**/*"],
     "mac": {
       "category": "public.app-category.utilities",
       "target": [{ "target": "dmg", "arch": ["x64", "arm64"] }],
@@ -43,8 +41,21 @@
       "extendInfo": { "NSRemovableVolumesUsageDescription": "Diter 需要访问可移动磁盘以写入启动盘。" }
     },
     "win": {
-      "target": [{ "target": "nsis", "arch": ["x64", "ia32", "arm64"] }],
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
+      "icon": "assets/icon.ico",
       "requestedExecutionLevel": "asInvoker"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Diter",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "artifactName": "Diter-${version}-win-x64-setup.${ext}"
     },
     "linux": {
       "target": ["AppImage", "deb"],

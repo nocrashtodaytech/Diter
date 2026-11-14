@@ -10,6 +10,7 @@ const crypto = require('crypto');
 const os = require('os');
 const devices = require('./devices');
 const safety = require('./safety');
+const { run } = require('./util');
 const rawEngine = require('./engines/raw');
 const darwinEngine = require('./engines/darwin');
 const winMediaEngine = require('./engines/windows-media');
@@ -191,6 +192,12 @@ async function erase({ device, options = {}, emit }) {
       safety.assertWritable(fresh, 0, options);
 
       const targetNode = process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode;
+      // 先卸载：磁盘挂载态下打开原始设备会 EPERM/EBUSY
+      try {
+        await unmount(device.id);
+      } catch (e) {
+        send({ kind: 'log', message: `卸载提示：${e.message || '目标设备可能仍被占用'}` });
+      }
       send({ kind: 'phase', phase: '擦除', pct: 0.02, message: options.method === 'random' ? '随机数据覆盖写入' : '零覆盖写入' });
       const result = await rawEngine.eraseRaw({
         targetNode,
@@ -249,6 +256,12 @@ async function backup({ device, targetPath, options = {}, emit }) {
       safety.assertWritable(fresh, 0, options);
 
       const sourceNode = process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode;
+      // 先卸载：磁盘挂载态下打开原始设备会 EPERM/EBUSY
+      try {
+        await unmount(device.id);
+      } catch (e) {
+        send({ kind: 'log', message: `卸载提示：${e.message || '目标设备可能仍被占用'}` });
+      }
       send({ kind: 'phase', phase: '备份', pct: 0.02, message: '正在读取设备并写入镜像文件' });
       // 预先创建目标文件：backupRaw 各 worker 以 r+ 打开，要求文件已存在（否则 ENOENT）
       try {
@@ -287,6 +300,19 @@ async function backup({ device, targetPath, options = {}, emit }) {
   })();
 
   return { jobId };
+}
+
+/** 擦除/备份前卸载目标磁盘：挂载态下打开 /dev/rdiskN 会 EPERM/EBUSY */
+async function unmount(deviceId) {
+  if (process.platform === 'darwin') {
+    await run('diskutil', ['unmountDisk', 'force', deviceId], { timeout: 60000 });
+  } else if (process.platform === 'linux') {
+    await run('sh', [
+      '-c',
+      `for m in $(awk '$1 ~ /^\\/dev\\/${deviceId}/ { print $2 }' /proc/mounts); do umount "$m" || umount -l "$m" || true; done`,
+    ]);
+  }
+  // Windows：卷锁定交给 eraseRaw 直接写 \\\\.\\PhysicalDriveN
 }
 
 async function eject(deviceId) {
