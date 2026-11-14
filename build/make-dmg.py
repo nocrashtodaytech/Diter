@@ -12,10 +12,38 @@ dmgbuild 是纯 Python 的成熟 DMG 打包库（底层 hdiutil + ds_store + mac
 """
 import sys
 import os
+import json
+import subprocess
 import tempfile
 import shutil
 
 import dmgbuild.core
+
+
+def _sync_plist_version(app_path):
+    """把 package.json 的版本号同步到 Info.plist。
+
+    Electron 的 app.getVersion()（以及 Finder「显示简介」）读的是
+    Info.plist 的 CFBundleShortVersionString，而不是 package.json。
+    改用 make-dmg.py 打包后这一步被漏掉，导致 Info.plist 一直停留在旧版本。
+    """
+    try:
+        pkg_path = os.path.join(app_path, "Contents", "Resources", "app", "package.json")
+        with open(pkg_path, encoding="utf-8") as f:
+            version = json.load(f).get("version")
+        if not version:
+            return
+        plist = os.path.join(app_path, "Contents", "Info.plist")
+        subprocess.run(
+            ["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleShortVersionString {version}", plist],
+            check=False,
+        )
+        subprocess.run(
+            ["/usr/libexec/PlistBuddy", "-c", f"Set :CFBundleVersion {version}", plist],
+            check=False,
+        )
+    except Exception:
+        pass
 
 # monkey-patch：让 hdiutil attach 挂载到 /tmp 下的自定义挂载点（而非 /Volumes）。
 # 否则 ditto 复制 app 到 /Volumes/Diter 时会生成 .BC.T 临时文件，其删除会被
@@ -78,6 +106,8 @@ def make_dmg(app_path, bg_png, out_dmg, volname="Diter"):
         "badge_icon": None,
         "icon": None,
     }
+
+    _sync_plist_version(app_path)
 
     try:
         dmgbuild.core.build_dmg(
