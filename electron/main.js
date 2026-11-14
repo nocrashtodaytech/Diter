@@ -453,8 +453,13 @@ ipcMain.handle('diter:probe', async (_e, imagePath) => {
 });
 
 ipcMain.handle('diter:start', async (_e, payload) => {
-  const hasHelper = await helper.ping();
   const isWindowsImage = payload?.imageInfo?.target?.os === 'windows';
+  // 写盘必须 root 助手：不可用时自动重新授权（弹一次密码框），失败则明确报错
+  let hasHelper = await helper.ping();
+  if (!hasHelper) {
+    hasHelper = await ensureHelper();
+    if (!hasHelper) throw new Error('需要管理员授权才能写入磁盘，请先点击右上角「需要授权」');
+  }
 
   // 预挂载：root 助手无 GUI 会话，无法 hdiutil attach；需要挂载的镜像在主进程先挂好
   let pre = null;
@@ -541,21 +546,21 @@ ipcMain.handle('diter:pick-save', async (_e, { defaultName } = {}) => {
 });
 
 ipcMain.handle('diter:erase', async (_e, payload) => {
-  if (await helper.ping()) {
-    return helper.erase(payload);
+  let hasHelper = await helper.ping();
+  if (!hasHelper) {
+    hasHelper = await ensureHelper();
+    if (!hasHelper) throw new Error('需要管理员授权才能擦除磁盘，请先点击右上角「需要授权」');
   }
-  const started = await writer.erase({ ...payload, emit: onAnyEvent });
-  if (started?.jobId) localJobs.add(started.jobId);
-  return started;
+  return helper.erase(payload);
 });
 
 ipcMain.handle('diter:backup', async (_e, payload) => {
-  if (await helper.ping()) {
-    return helper.backup(payload);
+  let hasHelper = await helper.ping();
+  if (!hasHelper) {
+    hasHelper = await ensureHelper();
+    if (!hasHelper) throw new Error('需要管理员授权才能备份磁盘，请先点击右上角「需要授权」');
   }
-  const started = await writer.backup({ ...payload, emit: onAnyEvent });
-  if (started?.jobId) localJobs.add(started.jobId);
-  return started;
+  return helper.backup(payload);
 });
 
 ipcMain.handle('diter:elevate', async () => {
@@ -688,4 +693,18 @@ function readHelperLog() {
   } catch {
     return '';
   }
+}
+
+/** 确保 root 助手可用：ping 成功直接返回；否则发起授权并轮询（弹一次密码框）。
+ *  写盘任务必须 root，若助手已死（如被 osascript 超时回收），这里自动重新拉起，
+ *  避免任务回落到非 root 主进程、打开 /dev/rdisk 时静默 EPERM。 */
+async function ensureHelper() {
+  if (await helper.ping()) return true;
+  elevation.relaunchElevated();
+  for (let i = 0; i < 120; i++) {
+    if (await helper.ping()) return true;
+    if (elevation.lastElevationError()) return false; // 用户取消 / 启动失败
+    await new Promise((r) => setTimeout(r, 500));
+  }
+  return false;
 }

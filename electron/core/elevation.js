@@ -54,7 +54,10 @@ function relaunchElevated() {
     const helperEntry = path.join(appPath, 'electron', 'core', 'helper-entry.js');
     // 前台运行助手（不加 nohup / &），见文件顶部注释
     const cmd = `ELECTRON_RUN_AS_NODE=1 ${quote(execPath)} ${quote(helperEntry)}`;
-    const script = `do shell script ${JSON.stringify(cmd)} with administrator privileges`;
+    // 关键：`do shell script` 默认 120 秒超时，超时后 osascript 会杀掉它启动的
+    // 常驻助手进程，导致写盘时助手已死、任务回落到非 root 进程而 EPERM。
+    // `with timeout of 0 seconds` 表示无限超时，让 osascript 一直 keep-alive 助手。
+    const script = `with timeout of 0 seconds\n\tdo shell script ${JSON.stringify(cmd)} with administrator privileges\nend timeout`;
     lastError = '';
     try {
       const child = spawn('osascript', ['-e', script], { stdio: ['ignore', 'ignore', 'pipe'] });
