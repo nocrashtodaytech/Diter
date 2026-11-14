@@ -41,6 +41,7 @@ Diter routes each image to the right engine instead of blindly `dd`-ing:
 - **Task history** — every write / erase / backup is logged, with one-click log reveal
 - **Multi-image queue** — drop multiple images at once and switch between them
 - **Appearance** — light, dark, or follow the system theme
+- **Support the developer** — an optional donation prompt (shown once per version) and a support entry in About
 - **Localization** — 6 languages: 简体中文, 繁體中文, English, 한국어, العربية, Русский
 
 ## Safety model
@@ -72,8 +73,8 @@ using mock data — it never touches a real disk.
 
 | Artifact | Platform | Notes |
 |---|---|---|
-| `Diter-2.0.1-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
-| `Diter-2.0.1-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
+| `Diter-2.0.2-mac-x64.dmg` | macOS (x64) | Unsigned — first launch needs right-click → Open |
+| `Diter-2.0.2-win-x64.zip` | Windows (x64) | Portable, no installer (keep the whole folder together) |
 
 Rebuild: `npm run package` (see `build/package.sh`).
 

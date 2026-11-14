@@ -111,7 +111,7 @@ export function createMock(): DiterApi {
   return {
     isDesktop: false,
     async boot() {
-      return { version: '1.0.0', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview', language: mockLang, appearance: 'system' as Appearance };
+      return { version: '2.0.2', platform: 'darwin', arch: 'arm64', elevated: true, elevatedByArg: false, electron: 'preview', language: mockLang, appearance: 'system' as Appearance, showDonate: false };
     },
     async listDevices() {
       const list = devices();
@@ -219,6 +219,10 @@ export function createMock(): DiterApi {
     async reveal() {},
     async openExternal(url: string) {
       window.open(url, '_blank');
+    },
+    async markDonatePrompted() {},
+    async openDonate() {
+      window.open('https://afdian.com/order/create?user_id=8a2e6fc6768411f1ac655254001e7c00&remark=&affiliate_code=', '_blank');
     },
     async getLanguage() {
       return mockLang;

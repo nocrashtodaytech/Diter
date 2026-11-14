@@ -72,12 +72,19 @@ async function partition(device, emit) {
     return waitMountPoint(device.id);
   }
   if (process.platform === 'win32') {
-    const script = `select disk ${device.id}\nclean\ncreate partition primary\nformat fs=fat32 quick label=DITER\nactive\nassign\n`;
+    // attributes disk clear readonly：清除可能的只读标记，减少 clean 失败
+    const script = `select disk ${device.id}\nattributes disk clear readonly\nclean\ncreate partition primary\nformat fs=fat32 quick label=DITER\nactive\nassign\n`;
     const tmp = path.join(require('os').tmpdir(), `diter-${Date.now()}.txt`);
     fs.writeFileSync(tmp, script, 'ascii');
     const r = await run('diskpart', ['/s', tmp], { timeout: 600000 });
     fs.unlinkSync(tmp);
-    if (!r.ok) throw new Error('diskpart 失败：' + r.stderr.trim());
+    if (!r.ok) {
+      const msg = (r.stderr || r.stdout || '').trim();
+      const hint = /lock|busy|use|占用|锁定|正在使用|in use/i.test(msg)
+        ? '目标 U 盘可能被其它程序占用，请关闭占用它的窗口（如资源管理器、杀毒软件、其他分区工具）后重试。'
+        : '目标 U 盘可能为只读（写保护开关）或已损坏，请检查后重试。';
+      throw new Error(`diskpart 失败：${msg}。${hint}`);
+    }
     // 找到 DITER 的盘符
     const q = await run('powershell.exe', [
       '-NoProfile',

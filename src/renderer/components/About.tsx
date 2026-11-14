@@ -1,8 +1,9 @@
 import React from 'react';
 import { useI18n, authorName } from '../i18n';
-import { Drive } from './Icons';
+import { Drive, Heart } from './Icons';
 
 const BILIBILI = 'https://space.bilibili.com/314146648';
+const DONATE_URL = 'https://afdian.com/order/create?user_id=8a2e6fc6768411f1ac655254001e7c00&remark=&affiliate_code=';
 
 export function About({ version, onClose }: { version: string; onClose: () => void }) {
   const { t, lang } = useI18n();
@@ -45,6 +46,17 @@ export function About({ version, onClose }: { version: string; onClose: () => vo
         </div>
 
         <div className="modal-actions">
+          <button
+            className="btn ghost"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
+            onClick={() => {
+              if (window.diter) window.diter.openDonate();
+              else window.open(DONATE_URL, '_blank');
+            }}
+          >
+            <Heart size={15} style={{ color: '#ff5a2b' }} />
+            {t('donateAbout')}
+          </button>
           <button className="btn primary" onClick={onClose}>
             {t('close')}
           </button>

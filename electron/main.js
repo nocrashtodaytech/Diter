@@ -357,6 +357,9 @@ if (elevation.isHelper()) {
 
 /* ----------------------------- IPC ----------------------------- */
 
+// 爱发电捐助链接
+const DONATE_URL = 'https://afdian.com/order/create?user_id=8a2e6fc6768411f1ac655254001e7c00&remark=&affiliate_code=';
+
 ipcMain.handle('diter:boot', async () => ({
   version: pkg.version,
   platform: process.platform,
@@ -366,7 +369,18 @@ ipcMain.handle('diter:boot', async () => ({
   electron: process.versions.electron,
   language: loadLanguage(),
   appearance: loadAppearance(),
+  showDonate: loadConfig().donatePromptedVersion !== pkg.version,
 }));
+
+// 记录「当前版本已提示过捐助」——每个新版本只在首次启动时弹一次
+ipcMain.handle('diter:donate-prompted', () => {
+  saveConfig({ donatePromptedVersion: pkg.version });
+});
+
+// 打开爱发电捐助链接
+ipcMain.handle('diter:open-donate', () => {
+  shell.openExternal(DONATE_URL);
+});
 
 ipcMain.handle('diter:get-language', () => loadLanguage());
 
@@ -586,6 +600,9 @@ ipcMain.handle('diter:open-external', async (_e, url) => {
 
 /* ----------------------------- 检查更新 ----------------------------- */
 
+// 防止重复触发下载安装（后台任务进行中时忽略再次点击）
+let updateInProgress = false;
+
 ipcMain.handle('diter:check-update', async () => {
   try {
     return await updater.check();
@@ -596,6 +613,8 @@ ipcMain.handle('diter:check-update', async () => {
 
 ipcMain.handle('diter:download-update', async (_e, asset) => {
   if (!asset || !asset.url) return { ok: false, error: '未找到可下载的安装包' };
+  if (updateInProgress) return { ok: false, error: '更新已在进行中' };
+  updateInProgress = true;
   // 后台静默下载 + 安装：不阻塞前端，用户可关闭更新面板继续工作
   (async () => {
     try {
@@ -626,6 +645,8 @@ ipcMain.handle('diter:download-update', async (_e, asset) => {
       if (win && !win.isDestroyed()) {
         win.webContents.send('diter:update-error', { message: e.message });
       }
+    } finally {
+      updateInProgress = false;
     }
   })();
   return { ok: true, started: true };

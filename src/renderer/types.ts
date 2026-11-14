@@ -100,6 +100,7 @@ export interface BootInfo {
   electron: string;
   language?: Lang;
   appearance?: Appearance;
+  showDonate?: boolean;
 }
 
 export interface UpdateAsset {
@@ -174,6 +175,8 @@ export interface DiterApi {
   assertWritable(p: { device: Device; imageSize: number; allowUnknownBus: boolean }): Promise<any>;
   reveal(path: string): Promise<void>;
   openExternal(url: string): Promise<void>;
+  markDonatePrompted(): Promise<void>;
+  openDonate(): Promise<void>;
   getLanguage(): Promise<Lang>;
   setLanguage(lang: Lang, opts?: { default?: boolean }): Promise<Lang>;
   getAppearance(): Promise<Appearance>;

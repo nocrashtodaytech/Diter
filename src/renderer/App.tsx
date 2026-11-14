@@ -12,6 +12,7 @@ import { About } from './components/About';
 import { Settings } from './components/Settings';
 import { Update } from './components/Update';
 import { History } from './components/History';
+import { DonateDialog } from './components/DonateDialog';
 
 type View = 'select' | 'writing' | 'done' | 'error';
 
@@ -45,6 +46,7 @@ export default function App() {
   const [aboutOpen, setAboutOpen] = useState(false);
   const [updateOpen, setUpdateOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [donateOpen, setDonateOpen] = useState(false);
   const [verify, setVerify] = useState(true);
   const [persistence, setPersistence] = useState(false);
   const [allowUnknown, setAllowUnknown] = useState(false);
@@ -71,6 +73,7 @@ export default function App() {
         setBoot(b);
         if (b.language) applyLang(b.language);
         if (b.platform === 'darwin') document.body.classList.add('is-mac');
+        if (b.showDonate) setDonateOpen(true);
       })
       .catch(() => {});
   }, []);
@@ -602,6 +605,19 @@ export default function App() {
       {aboutOpen && <About version={boot?.version || '1.0.0'} onClose={() => setAboutOpen(false)} />}
       {updateOpen && <Update onClose={() => setUpdateOpen(false)} />}
       {historyOpen && <History onClose={() => setHistoryOpen(false)} />}
+      {donateOpen && (
+        <DonateDialog
+          onDonate={() => {
+            api().markDonatePrompted();
+            api().openDonate();
+            setDonateOpen(false);
+          }}
+          onClose={() => {
+            api().markDonatePrompted();
+            setDonateOpen(false);
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -70,8 +70,8 @@ npm start            # 建置並啟動桌面應用程式
 
 | 產物 | 平台 | 說明 |
 |---|---|---|
-| `Diter-2.0.1-mac-x64.dmg` | macOS (x64) | 未簽署 —— 首次開啟需按右鍵 → 開啟 |
-| `Diter-2.0.1-win-x64.zip` | Windows (x64) | 免安裝版（整個目錄需一起保留） |
+| `Diter-2.0.2-mac-x64.dmg` | macOS (x64) | 未簽署 —— 首次開啟需按右鍵 → 開啟 |
+| `Diter-2.0.2-win-x64.zip` | Windows (x64) | 免安裝版（整個目錄需一起保留） |
 
 重新打包：`npm run package`（見 `build/package.sh`）。
 

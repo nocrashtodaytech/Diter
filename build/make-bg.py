@@ -75,8 +75,12 @@ def draw():
     hx, half = ax1, 6 * S
     d.polygon([(hx - 1 * S, arrow_y - half), (hx - 1 * S, arrow_y + half), (hx + 9 * S, arrow_y)], fill=INK)
 
-    f_hint = load_font(24, "medium")
-    d.text((cx, 244 * S), "拖入「应用程序」文件夹", font=f_hint, fill=BODY, anchor="mm")
+    # 拖拽提示：中文为主 + 英文为副
+    f_hint = load_font(22, "medium")
+    d.text((cx, 236 * S), "拖入「应用程序」文件夹", font=f_hint, fill=BODY, anchor="mm")
+
+    f_hint_en = load_font(16, "regular")
+    d.text((cx, 268 * S), "Drag to the Applications folder", font=f_hint_en, fill=GRAY, anchor="mm")
 
     # ---------- 底部标语 ----------
     f_tag = load_font(18, "regular")

@@ -1008,6 +1008,10 @@ body.is-mac .panel {
   flex: 0 0 52px;
   background: linear-gradient(145deg, #eaf4ff, #d6eaff);
 }
+.about-hero .donate-mark {
+  background: linear-gradient(145deg, #ffe3d6, #ffc9b3);
+  color: #ff5a2b;
+}
 .about-name {
   font-size: 22px;
   font-weight: 700;
@@ -1833,6 +1837,10 @@ body.is-mac .panel {
   /* 关于 */
   .about-hero .brand-mark {
     background: linear-gradient(145deg, rgba(10, 132, 255, 0.3), rgba(10, 132, 255, 0.16));
+  }
+  .about-hero .donate-mark {
+    background: linear-gradient(145deg, rgba(255, 90, 43, 0.32), rgba(255, 90, 43, 0.16));
+    color: #ff7a4d;
   }
   .about-meta {
     background: rgba(255, 255, 255, 0.06);

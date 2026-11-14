@@ -62,6 +62,8 @@ contextBridge.exposeInMainWorld('diter', {
   assertWritable: (p) => ipcRenderer.invoke('diter:assert-writable', p),
   reveal: (p) => ipcRenderer.invoke('diter:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('diter:open-external', url),
+  markDonatePrompted: () => ipcRenderer.invoke('diter:donate-prompted'),
+  openDonate: () => ipcRenderer.invoke('diter:open-donate'),
   getLanguage: () => ipcRenderer.invoke('diter:get-language'),
   setLanguage: (lang, opts) => ipcRenderer.invoke('diter:set-language', lang, opts),
   getAppearance: () => ipcRenderer.invoke('diter:get-appearance'),

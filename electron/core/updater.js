@@ -147,6 +147,8 @@ function download(url, dest, onProgress) {
         out.on('error', reject);
       });
       req.on('error', reject);
+      // 安装包可能较大，设置 30 分钟下载超时，避免卡死
+      req.setTimeout(1800000, () => req.destroy(new Error('下载超时')));
     };
     doReq(url, 0);
   });

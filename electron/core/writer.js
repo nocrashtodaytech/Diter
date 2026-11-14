@@ -250,6 +250,12 @@ async function backup({ device, targetPath, options = {}, emit }) {
 
       const sourceNode = process.platform === 'darwin' ? `/dev/r${device.id}` : device.rawNode;
       send({ kind: 'phase', phase: '备份', pct: 0.02, message: '正在读取设备并写入镜像文件' });
+      // 预先创建目标文件：backupRaw 各 worker 以 r+ 打开，要求文件已存在（否则 ENOENT）
+      try {
+        fs.closeSync(fs.openSync(targetPath, 'w'));
+      } catch (e) {
+        throw Object.assign(new Error('无法创建备份文件：' + e.message), { code: 'OPEN_FAILED' });
+      }
       const result = await rawEngine.backupRaw({
         sourceNode,
         targetPath,

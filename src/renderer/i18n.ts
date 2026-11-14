@@ -169,6 +169,12 @@ const zh = {
   cancelled: '已取消',
   queue: '镜像队列',
   updateBackground: '下载安装将在后台继续，可关闭此窗口',
+  donateTitle: '支持 Diter',
+  donateSub: '免费开源，需要你的支持',
+  donateDesc: 'Diter 是一款免费开源的启动盘制作工具。如果它帮到了你，欢迎通过爱发电支持开发者，让项目持续更新、变得更好。',
+  donateBtn: '去支持',
+  donateLater: '暂不需要',
+  donateAbout: '支持开发者',
 };
 
 const zhTW: Record<keyof typeof zh, string> = {
@@ -320,6 +326,12 @@ const zhTW: Record<keyof typeof zh, string> = {
   cancelled: '已取消',
   queue: '映像佇列',
   updateBackground: '下載安裝將在背景繼續，可關閉此視窗',
+  donateTitle: '支持 Diter',
+  donateSub: '免費開源，需要你的支持',
+  donateDesc: 'Diter 是一款免費開源的啟動碟製作工具。如果它幫到了你，歡迎透過愛發電支持開發者，讓專案持續更新、變得更好。',
+  donateBtn: '去支持',
+  donateLater: '暫不需要',
+  donateAbout: '支持開發者',
 };
 
 const en: Record<keyof typeof zh, string> = {
@@ -471,6 +483,12 @@ const en: Record<keyof typeof zh, string> = {
   cancelled: 'Cancelled',
   queue: 'Image queue',
   updateBackground: 'Download and install will continue in the background. You can close this window.',
+  donateTitle: 'Support Diter',
+  donateSub: 'Free and open source, your support matters',
+  donateDesc: 'Diter is a free, open-source bootable USB creator. If it helped you, consider supporting the developer on Aifadian to keep it updated and improving.',
+  donateBtn: 'Support',
+  donateLater: 'Not now',
+  donateAbout: 'Support the developer',
 };
 
 const ko: Record<keyof typeof zh, string> = {
@@ -622,6 +640,12 @@ const ko: Record<keyof typeof zh, string> = {
   cancelled: '취소됨',
   queue: '이미지 대기열',
   updateBackground: '다운로드 및 설치가 백그라운드에서 계속됩니다. 이 창을 닫아도 됩니다.',
+  donateTitle: 'Diter 지원하기',
+  donateSub: '무료 오픈소스, 여러분의 지원이 필요합니다',
+  donateDesc: 'Diter는 무료 오픈소스 부팅 USB 제작 도구입니다. 도움이 되셨다면 Aifadian을 통해 개발자를 지원해 주세요. 지속적인 업데이트에 큰 힘이 됩니다.',
+  donateBtn: '지원하기',
+  donateLater: '나중에',
+  donateAbout: '개발자 지원',
 };
 
 const ru: Record<keyof typeof zh, string> = {
@@ -773,6 +797,12 @@ const ru: Record<keyof typeof zh, string> = {
   cancelled: 'Отменено',
   queue: 'Очередь образов',
   updateBackground: 'Загрузка и установка продолжатся в фоновом режиме. Вы можете закрыть это окно.',
+  donateTitle: 'Поддержать Diter',
+  donateSub: 'Бесплатно и с открытым кодом',
+  donateDesc: 'Diter — бесплатный инструмент с открытым исходным кодом для создания загрузочных USB. Если он вам помог, поддержите разработчика через Aifadian, чтобы проект продолжал развиваться.',
+  donateBtn: 'Поддержать',
+  donateLater: 'Не сейчас',
+  donateAbout: 'Поддержать разработчика',
 };
 
 const ar: Record<keyof typeof zh, string> = {
@@ -924,6 +954,12 @@ const ar: Record<keyof typeof zh, string> = {
   cancelled: 'أُلغي',
   queue: 'قائمة الصور',
   updateBackground: 'سيستمر التنزيل والتثبيت في الخلفية. يمكنك إغلاق هذه النافذة.',
+  donateTitle: 'ادعم Diter',
+  donateSub: 'مجاني ومفتوح المصدر',
+  donateDesc: 'Diter أداة مجانية ومفتوحة المصدر لإنشاء وحدات USB قابلة للإقلاع. إذا ساعدتك، ففكّر في دعم المطوّر عبر Aifadian لإبقاء المشروع قيد التطوير.',
+  donateBtn: 'ادعم',
+  donateLater: 'ليس الآن',
+  donateAbout: 'ادعم المطوّر',
 };
 
 const dict: Record<Lang, Record<keyof typeof zh, string>> = { zh, 'zh-TW': zhTW, en, ko, ru, ar };

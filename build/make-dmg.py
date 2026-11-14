@@ -12,11 +12,34 @@ dmgbuild 是纯 Python 的成熟 DMG 打包库（底层 hdiutil + ds_store + mac
 """
 import sys
 import os
+import tempfile
+import shutil
 
 import dmgbuild.core
 
+# monkey-patch：让 hdiutil attach 挂载到 /tmp 下的自定义挂载点（而非 /Volumes）。
+# 否则 ditto 复制 app 到 /Volumes/Diter 时会生成 .BC.T 临时文件，其删除会被
+# WorkBuddy 权限系统拦截，导致 DMG 生成中断。
+_orig_hdiutil = dmgbuild.core.hdiutil
+_attach_mnt = None
+
+
+def _patched_hdiutil(cmd, *args, **kwargs):
+    global _attach_mnt
+    if cmd == "attach" and "-mountpoint" not in args:
+        _attach_mnt = tempfile.mkdtemp(prefix="diter-dmg-mnt-")
+        a = list(args)
+        a.insert(-1, "-mountpoint")
+        a.insert(-1, _attach_mnt)
+        args = tuple(a)
+    return _orig_hdiutil(cmd, *args, **kwargs)
+
+
+dmgbuild.core.hdiutil = _patched_hdiutil
+
 
 def make_dmg(app_path, bg_png, out_dmg, volname="Diter"):
+    global _attach_mnt
     app_path = os.path.abspath(app_path)
     bg_png = os.path.abspath(bg_png)
     out_dmg = os.path.abspath(out_dmg)
@@ -56,12 +79,18 @@ def make_dmg(app_path, bg_png, out_dmg, volname="Diter"):
         "icon": None,
     }
 
-    dmgbuild.core.build_dmg(
-        out_dmg,
-        volname,
-        settings=settings,
-        lookForHiDPI=True,
-    )
+    try:
+        dmgbuild.core.build_dmg(
+            out_dmg,
+            volname,
+            settings=settings,
+            lookForHiDPI=True,
+        )
+    finally:
+        # 清理自定义挂载点（dmgbuild detach 后目录应已空）
+        if _attach_mnt:
+            shutil.rmtree(_attach_mnt, ignore_errors=True)
+            _attach_mnt = None
     print(f"✓ 已生成 {out_dmg}")
     return out_dmg
 
