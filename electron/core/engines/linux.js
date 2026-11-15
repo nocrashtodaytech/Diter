@@ -39,6 +39,7 @@ async function write(ctx) {
   const { imagePath, imageInfo, device, options = {}, emit, signal } = ctx;
   const total = imageInfo?.size || fs.statSync(imagePath).size;
   const isMac = process.platform === 'darwin';
+  const isWin = process.platform === 'win32';
 
   emit({ phase: '准备', message: '卸载目标磁盘', pct: 0.01 });
   if (isMac) {
@@ -47,15 +48,16 @@ async function write(ctx) {
     if (!u.ok) {
       emit({ message: `卸载提示：${(u.stderr || '').trim().slice(-160) || '目标设备可能仍被占用'}` });
     }
-  } else {
+  } else if (!isWin) {
     await run('sh', [
       '-c',
       `for m in $(awk '$1 ~ /^\\/dev\\/${device.id}/ { print $2 }' /proc/mounts); do umount "$m" || umount -l "$m" || true; done`,
     ]);
   }
+  // Windows：写 \\.\PhysicalDriveN 前不主动卸载；若盘符仍被占用，raw 写入会报 EBUSY 提示拔插 U 盘
 
-  // macOS 写原始字符设备 /dev/rdiskN（绕过块缓存），Linux 写 /dev/sdX
-  const targetNode = isMac ? `/dev/r${device.id}` : `/dev/${device.id}`;
+  // macOS 写 /dev/rdiskN（字符设备），Linux 写 /dev/sdX，Windows 写 \\.\PhysicalDriveN
+  const targetNode = isWin ? device.rawNode : isMac ? `/dev/r${device.id}` : `/dev/${device.id}`;
   emit({ phase: '写入', message: `开始写入 ${(total / 1073741824).toFixed(2)} GB`, pct: 0.02 });
   const res = await raw.writeRaw({
     sourcePath: imagePath,
@@ -77,7 +79,7 @@ async function write(ctx) {
 
   // 持久化分区仅 Linux 宿主支持（依赖 sgdisk/sfdisk/lsblk/mkfs.ext4）
   let persistence = { created: false };
-  if (!isMac && options.persistence && (imageInfo?.supportsPersistence || true)) {
+  if (!isMac && !isWin && options.persistence && (imageInfo?.supportsPersistence || true)) {
     try {
       persistence = await addPersistence(device, total, emit, signal);
     } catch (e) {
