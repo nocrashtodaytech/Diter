@@ -172,6 +172,7 @@ export interface DiterApi {
   pickSave(opts: { defaultName?: string }): Promise<string | null>;
   getHistory(): Promise<HistoryEntry[]>;
   requestElevation(): Promise<{ ok: boolean; message?: string }>;
+  unlockDevice(deviceId: string): Promise<{ ok: boolean; message?: string }>;
   assertWritable(p: { device: Device; imageSize: number; allowUnknownBus: boolean }): Promise<any>;
   reveal(path: string): Promise<void>;
   openExternal(url: string): Promise<void>;

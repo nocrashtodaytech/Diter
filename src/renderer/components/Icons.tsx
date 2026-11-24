@@ -56,6 +56,14 @@ export const Lock = ({ size = 18, style }: P) => (
   </svg>
 );
 
+export const Unlock = ({ size = 18, style }: P) => (
+  <svg {...S(size)} style={style}>
+    <rect x="4.5" y="10.5" width="15" height="10.5" rx="2.4" />
+    <path d="M8 10.5V7.6a4 4 0 0 1 7.6-1.3" />
+    <circle cx="12" cy="15.6" r="1.1" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const Check = ({ size = 18, style }: P) => (
   <svg {...S(size)} style={style} strokeWidth={2.6}>
     <path d="m4.5 12.6 4.7 4.6L19.5 6.8" />

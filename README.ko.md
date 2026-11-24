@@ -26,8 +26,14 @@ Diter는 무작정 `dd`하지 않고 이미지에 맞는 엔진으로 라우팅�
 | 대상 | 전략 |
 |---|---|
 | **Windows ISO** | 파티션 → FAT32 → 파일 복사 → 부팅 코드 (`install.wim > 4GB` 시 wimlib로 자동 분할) |
-| **macOS** | 3단계 전략: `createinstallmedia` → `asr` → `raw` (10.10부터 최신까지 지원) |
+| **macOS** | 3단계 전략: `createinstallmedia` → `asr` → `raw` (macOS 11 이상 지원) |
 | **Linux** | 디스크 전체 바이트 단위 쓰기, 선택적 `casper-rw` 영구 저장 파티션 |
+
+## 시스템 요구 사항
+
+- **macOS**: 11.0(Big Sur) 이상 — 테스트 완료.
+- **Windows**: Windows 10 / 11(x64). NSIS 설치 프로그램을 제공하며, 핵심 쓰기 경로는 검증 중이므로 문제가 있으면 알려주세요.
+- **Linux**: 최신 x86-64 배포판.
 
 ## 주요 기능
 

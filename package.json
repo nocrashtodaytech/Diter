@@ -1,7 +1,7 @@
 {
   "name": "diter",
   "productName": "Diter",
-  "version": "2.0.2",
+  "version": "2.0.3",
   "description": "Diter · 跨平台 USB 启动盘写入工具（Windows / macOS / Linux）",
   "main": "electron/main.js",
   "author": "Diter",
@@ -15,7 +15,6 @@
     "package": "bash build/package.sh",
     "dist:mac": "node build/bundle.mjs && electron-builder --mac",
     "dist:win": "node build/bundle.mjs && electron-builder --win",
-    "dist:win:appx": "node build/bundle.mjs && electron-builder --win appx",
     "dist:linux": "node build/bundle.mjs && electron-builder --linux"
   },
   "dependencies": {
@@ -42,22 +41,9 @@
       "extendInfo": { "NSRemovableVolumesUsageDescription": "Diter 需要访问可移动磁盘以写入启动盘。" }
     },
     "win": {
-      "target": [
-        { "target": "nsis", "arch": ["x64"] },
-        { "target": "appx", "arch": ["x64"] }
-      ],
+      "target": [{ "target": "nsis", "arch": ["x64"] }],
       "icon": "assets/icon.ico",
       "requestedExecutionLevel": "asInvoker"
-    },
-    "appx": {
-      "applicationId": "Diter",
-      "identityName": "nocrashtodaytech.Diter",
-      "publisher": "CN=nocrashtodaytech",
-      "publisherDisplayName": "nocrashtodaytech",
-      "displayName": "Diter",
-      "backgroundColor": "#1e232e",
-      "showNameOnTiles": true,
-      "languages": ["zh-CN", "zh-TW", "en-US", "ko", "ru", "ar"]
     },
     "nsis": {
       "oneClick": false,

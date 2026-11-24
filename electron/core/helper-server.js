@@ -9,6 +9,7 @@
 const net = require('net');
 const fs = require('fs');
 const writer = require('./writer');
+const { setLang } = require('./i18n');
 
 const SOCK = process.platform === 'win32' ? '\\\\.\\pipe\\diter-helper' : '/tmp/diter-helper.sock';
 
@@ -29,6 +30,7 @@ function handle(msg, socket) {
       });
       break;
     case 'start':
+      setLang(msg.payload?.lang);
       try {
         writer
           .start({
@@ -45,6 +47,7 @@ function handle(msg, socket) {
       writer.cancel(msg.jobId);
       break;
     case 'erase':
+      setLang(msg.payload?.lang);
       writer
         .erase({
           ...msg.payload,
@@ -54,6 +57,7 @@ function handle(msg, socket) {
         .catch((e) => reply({ t: 'error', id: msg.id, message: e.message }));
       break;
     case 'backup':
+      setLang(msg.payload?.lang);
       writer
         .backup({
           ...msg.payload,

@@ -128,7 +128,7 @@ async function list() {
       ? 'virtual'
       : 'unknown';
 
-    let name = (info.MediaName || '').trim() || `磁盘 ${id}`;
+    let name = (info.MediaName || '').trim() || `Disk ${id}`;
     name = name.replace(/\s*(USB|Media|Device|Disk)\s*$/i, '').trim() || name;
     if (!/usb|sd|card/i.test(name)) {
       const usbVolume = volumes.find((v) => v.name);
@@ -141,7 +141,7 @@ async function list() {
       rawNode: RAW(id),
       name,
       size: d.Size || info.MediaSize || 0,
-      bus: busRaw || '未知接口',
+      bus: busRaw || 'Unknown',
       busKind,
       removable: info.Removable === true,
       internal: info.Internal === true,
@@ -158,7 +158,7 @@ async function list() {
         ? 'APM'
         : '—',
       writable: true,
-      detail: `${busRaw || '未知'} · ${info.Removable ? '可移动' : '固定'}`,
+      detail: `${busRaw || 'Unknown'} · ${info.Removable ? 'Removable' : 'Fixed'}`,
       platform: 'darwin',
     };
   });

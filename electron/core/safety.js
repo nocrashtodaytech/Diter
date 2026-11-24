@@ -33,6 +33,12 @@ function evaluate(device, imageSize, opts = {}) {
     };
   }
 
+  // 用户显式解锁（已输入系统密码）→ 跳过其余锁定判定，允许写入。
+  // 系统盘仍在上面被永久锁定，无法解锁。
+  if (opts.unlocked) {
+    return { level: 'ok', code: null, title: '已解锁', reason: '该设备已被手动解锁', advice: '' };
+  }
+
   if (d.virtual) {
     return {
       level: 'blocked',

@@ -14,9 +14,9 @@ const { run } = require('../util');
 
 // MSFT_StorageBusType
 const BUS = {
-  0: '未知', 1: 'SCSI', 2: 'ATAPI', 3: 'ATA', 4: '1394', 5: 'SSA', 6: 'Fibre',
+  0: 'Unknown', 1: 'SCSI', 2: 'ATAPI', 3: 'ATA', 4: '1394', 5: 'SSA', 6: 'Fibre',
   7: 'USB', 8: 'RAID', 9: 'iSCSI', 10: 'SAS', 11: 'SATA', 12: 'SD', 13: 'MMC',
-  14: '虚拟', 15: '文件虚拟', 16: '存储空间', 17: 'NVMe', 18: 'SCM', 19: 'UFS',
+  14: 'Virtual', 15: 'File-backed Virtual', 16: 'Storage Space', 17: 'NVMe', 18: 'SCM', 19: 'UFS',
 };
 
 const PS_SCRIPT = `
@@ -105,12 +105,12 @@ async function list() {
   if (!rows) return { ok: false, error: '无法读取磁盘列表（PowerShell 调用失败）', devices: [] };
 
   const devices = rows.map((r) => {
-    const busType = BUS[r.busType] || '未知';
+    const busType = BUS[r.busType] || 'Unknown';
     const busKind = /USB/i.test(busType)
       ? 'usb'
       : /SD|MMC/i.test(busType)
       ? 'sd'
-      : /虚拟|文件虚拟|存储空间/i.test(busType)
+      : /Virtual|Storage Space/i.test(busType)
       ? 'virtual'
       : ['SATA', 'NVMe', 'RAID', 'SCSI', 'SAS'].includes(busType)
       ? 'internal'
@@ -120,7 +120,7 @@ async function list() {
       id: String(r.number),
       node: `\\\\.\\PhysicalDrive${r.number}`,
       rawNode: `\\\\.\\PhysicalDrive${r.number}`,
-      name: (r.name || `磁盘 ${r.number}`).trim(),
+      name: (r.name || `Disk ${r.number}`).trim(),
       size: Number(r.size) || 0,
       bus: busType,
       busKind,
@@ -134,7 +134,7 @@ async function list() {
         .map((v) => ({ name: v.name || '', mount: v.letter ? `${v.letter}:\\` : '', fs: v.fs || '' })),
       partitionScheme: r.partStyle && r.partStyle !== 'RAW' ? r.partStyle : 'RAW',
       writable: r.isReadOnly !== true,
-      detail: `${busType} · ${(r.mediaType || '').replace('Media', '') || '—'}${legacy ? ' · 兼容模式' : ''}`,
+      detail: `${busType} · ${(r.mediaType || '').replace('Media', '') || '—'}${legacy ? ' · Compatibility mode' : ''}`,
       platform: 'win32',
     };
   });

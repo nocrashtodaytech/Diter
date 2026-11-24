@@ -360,6 +360,26 @@ export default function App() {
     }
   };
 
+  const handleUnlock = async (device: Device) => {
+    if (elevating) return;
+    setElevating(true);
+    setElevateError(null);
+    try {
+      const r = await api().unlockDevice(device.id);
+      if (r && r.ok) {
+        // 解锁成功：刷新授权状态并重新拉取设备列表（轮询也会自动刷新）
+        const b = await api().boot();
+        setBoot(b);
+      } else {
+        setElevateError((r && r.message) || t('elevateFailed'));
+      }
+    } catch (e: any) {
+      setElevateError(e?.message || t('elevateFailed'));
+    } finally {
+      setElevating(false);
+    }
+  };
+
   /* ---------------------------- 渲染 ---------------------------- */
   return (
     <div className="shell">
@@ -459,14 +479,6 @@ export default function App() {
                 </div>
               )}
               {image && <Preflight image={image} device={selected} />}
-              <div className="scope-line">
-                <span>{t('scope')}</span>
-                <b>Windows 7 – 11</b>
-                <i>·</i>
-                <b>macOS 10.10 – 27</b>
-                <i>·</i>
-                <b>Linux</b>
-              </div>
               {probeError && (
                 <div className="panel" style={{ padding: '10px 14px', display: 'flex', gap: 9, alignItems: 'center' }}>
                   <X size={14} style={{ color: 'var(--danger)', flex: '0 0 14px' }} />
@@ -491,6 +503,8 @@ export default function App() {
                 scanning={scanning}
                 onErase={handleErase}
                 onBackup={handleBackup}
+                imageSize={imageSize}
+                onUnlock={handleUnlock}
               />
             </div>
           </div>

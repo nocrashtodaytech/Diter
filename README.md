@@ -26,8 +26,14 @@ Diter routes each image to the right engine instead of blindly `dd`-ing:
 | Target | Strategy |
 |---|---|
 | **Windows ISO** | partition → FAT32 → copy files → boot code (auto-splits `install.wim > 4 GB` with wimlib) |
-| **macOS** | three-tier: `createinstallmedia` → `asr` → `raw`, covering 10.10 through the latest |
+| **macOS** | three-tier: `createinstallmedia` → `asr` → `raw`, for macOS 11 and later |
 | **Linux** | whole-disk byte-level write, with optional `casper-rw` persistence partition |
+
+## System requirements
+
+- **macOS**: 11.0 (Big Sur) or later — tested.
+- **Windows**: Windows 10 / 11 (x64). An NSIS installer is provided; the core write path is being actively validated, so please report any issues you find.
+- **Linux**: any recent x86-64 distribution.
 
 ## Highlights
 

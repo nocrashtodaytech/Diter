@@ -12,6 +12,7 @@ const helperServer = require('./core/helper-server');
 const helper = require('./core/helper-client');
 const updater = require('./core/updater');
 const { run } = require('./core/util');
+const { setLang } = require('./core/i18n');
 const pkg = require('../package.json');
 
 let win = null;
@@ -131,7 +132,7 @@ function saveConfig(patch) {
 
 function loadLanguage() {
   const c = loadConfig();
-  return LANGS.includes(c.language) ? c.language : 'zh';
+  return LANGS.includes(c.language) ? c.language : 'en';
 }
 
 function loadAppearance() {
@@ -321,6 +322,7 @@ if (elevation.isHelper()) {
 
     app.whenReady().then(() => {
       nativeTheme.themeSource = loadAppearance();
+      setLang(loadLanguage());
       buildMenu(loadLanguage());
       createWindow();
       helper.setEventHandler(onAnyEvent);
@@ -385,10 +387,10 @@ ipcMain.handle('diter:open-donate', () => {
 ipcMain.handle('diter:get-language', () => loadLanguage());
 
 ipcMain.handle('diter:set-language', (_e, lang, opts) => {
-  const l = LANGS.includes(lang) ? lang : 'zh';
-  const asDefault = !!(opts && opts.default === true);
-  // 只有勾选「设为默认语言」才持久化；否则清除已存语言，下次启动回默认中文
-  saveConfig({ language: asDefault ? l : undefined });
+  const l = LANGS.includes(lang) ? lang : 'en';
+  // 选择语言即持久化，下次启动（含更新后）沿用用户选择
+  saveConfig({ language: l });
+  setLang(l);
   buildMenu(l);
   return l;
 });
@@ -410,8 +412,27 @@ ipcMain.handle('diter:get-settings', () => {
   };
 });
 
+// 用户手动解锁的设备集合（输入系统密码后解锁，会话级，重启后失效）
+const unlockedDevices = new Set();
+
 ipcMain.handle('diter:devices', async (_e, opts = {}) => {
-  return devices.list({ imageSize: opts.imageSize || 0, allowUnknownBus: !!opts.allowUnknownBus });
+  return devices.list({
+    imageSize: opts.imageSize || 0,
+    allowUnknownBus: !!opts.allowUnknownBus,
+    unlockedIds: [...unlockedDevices],
+  });
+});
+
+ipcMain.handle('diter:unlock-device', async (_e, deviceId) => {
+  if (!deviceId) throw new Error('缺少设备标识');
+  // 解锁需要管理员授权：先确保提权助手可用（弹出系统密码框）
+  let hasHelper = await helper.ping();
+  if (!hasHelper) {
+    hasHelper = await ensureHelper();
+    if (!hasHelper) throw new Error('需要管理员授权才能解锁磁盘，请先输入系统密码');
+  }
+  unlockedDevices.add(deviceId);
+  return { ok: true };
 });
 
 ipcMain.handle('diter:pick-image', async () => {
@@ -454,6 +475,8 @@ ipcMain.handle('diter:probe', async (_e, imagePath) => {
 
 ipcMain.handle('diter:start', async (_e, payload) => {
   const isWindowsImage = payload?.imageInfo?.target?.os === 'windows';
+  // 注入解锁标志：已解锁的设备在 helper 重新校验时同样放行
+  payload.options = { ...(payload.options || {}), unlocked: unlockedDevices.has(payload?.device?.id) };
   // 写盘必须 root 助手：不可用时自动重新授权（弹一次密码框），失败则明确报错
   let hasHelper = await helper.ping();
   if (!hasHelper) {
@@ -499,7 +522,8 @@ ipcMain.handle('diter:start', async (_e, payload) => {
   if (hasHelper) {
     let started;
     try {
-      started = await helper.start(pre ? { ...payload, preMounted: pre } : payload);
+      const helperPayload = { ...payload, lang: loadLanguage() };
+      started = await helper.start(pre ? { ...helperPayload, preMounted: pre } : helperPayload);
     } catch (e) {
       if (pre) detachPreMounted(pre);
       throw e;
@@ -551,7 +575,7 @@ ipcMain.handle('diter:erase', async (_e, payload) => {
     hasHelper = await ensureHelper();
     if (!hasHelper) throw new Error('需要管理员授权才能擦除磁盘，请先点击右上角「需要授权」');
   }
-  return helper.erase(payload);
+  return helper.erase({ ...payload, lang: loadLanguage() });
 });
 
 ipcMain.handle('diter:backup', async (_e, payload) => {
@@ -560,7 +584,7 @@ ipcMain.handle('diter:backup', async (_e, payload) => {
     hasHelper = await ensureHelper();
     if (!hasHelper) throw new Error('需要管理员授权才能备份磁盘，请先点击右上角「需要授权」');
   }
-  return helper.backup(payload);
+  return helper.backup({ ...payload, lang: loadLanguage() });
 });
 
 ipcMain.handle('diter:elevate', async () => {

@@ -59,6 +59,7 @@ contextBridge.exposeInMainWorld('diter', {
   pickSave: (opts) => ipcRenderer.invoke('diter:pick-save', opts),
   getHistory: () => ipcRenderer.invoke('diter:get-history'),
   requestElevation: () => ipcRenderer.invoke('diter:elevate'),
+  unlockDevice: (deviceId) => ipcRenderer.invoke('diter:unlock-device', deviceId),
   assertWritable: (p) => ipcRenderer.invoke('diter:assert-writable', p),
   reveal: (p) => ipcRenderer.invoke('diter:reveal', p),
   openExternal: (url) => ipcRenderer.invoke('diter:open-external', url),

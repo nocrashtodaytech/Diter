@@ -17,6 +17,7 @@ const fsp = require('fs/promises');
 const path = require('path');
 const { run, waitMountPoint, RateMeter } = require('../util');
 const { spawnStep, hasCommand } = require('./spawn');
+const { t } = require('../i18n');
 
 const WIM_LIMIT = 3.9 * 1024 * 1024 * 1024;
 
@@ -29,11 +30,11 @@ async function mountIso(imagePath) {
       ['-c', `hdiutil attach -readonly -nobrowse -noverify -plist "${imagePath.replace(/"/g, '\\"')}" | plutil -convert json -o - -`],
       { timeout: 120000 }
     );
-    if (!r.ok) throw new Error('挂载镜像失败：' + r.stderr.trim());
+    if (!r.ok) throw new Error('Failed to mount image: ' + r.stderr.trim());
     const j = JSON.parse(r.stdout);
     const ents = j['system-entities'] || [];
     const mp = ents.find((e) => e['mount-point'] && e['mount-point'] !== '/')?.['mount-point'];
-    if (!mp) throw new Error('镜像已挂载但找不到挂载点');
+    if (!mp) throw new Error(t('errMountNoPoint'));
     return { mountPoint: mp, devEntry: ents.find((e) => e['dev-entry'])?.['dev-entry'], cleanup: async () => run('hdiutil', ['detach', mp, '-force']) };
   }
   if (process.platform === 'win32') {
@@ -44,7 +45,7 @@ $vol = $img | Get-Volume
 `;
     const r = await run('powershell.exe', ['-NoProfile', '-Command', ps], { timeout: 120000 });
     const letter = (r.stdout || '').trim().replace(':', '');
-    if (!letter) throw new Error('挂载 ISO 失败');
+    if (!letter) throw new Error('Failed to mount ISO');
     return {
       mountPoint: `${letter}:\\`,
       devEntry: null,
@@ -55,18 +56,18 @@ $vol = $img | Get-Volume
   // Linux
   const mp = fs.mkdtempSync('/tmp/diter-iso-');
   const r = await run('mount', ['-o', 'loop,ro', imagePath, mp], { timeout: 60000 });
-  if (!r.ok) throw new Error('挂载镜像失败：' + r.stderr.trim());
+  if (!r.ok) throw new Error('Failed to mount image: ' + r.stderr.trim());
   return { mountPoint: mp, devEntry: null, cleanup: async () => run('umount', [mp]) };
 }
 
 /* ------------------------------ 分区 / 格式化 ------------------------------ */
 
 async function partition(device, emit) {
-  emit({ phase: '分区', message: '清除分区表并建立 FAT32 活动分区' });
+  emit({ phase: t('phasePartition'), message: t('msgBuildFat32') });
   if (process.platform === 'darwin') {
     await run('diskutil', ['unmountDisk', 'force', device.id], { timeout: 60000 });
     const r = await run('diskutil', ['eraseDisk', 'MS-DOS', 'DITER', 'MBR', device.id], { timeout: 300000 });
-    if (!r.ok) throw new Error('格式化失败：' + r.stderr.trim());
+    if (!r.ok) throw new Error(t('errFormatFailed', { msg: r.stderr.trim() }));
     // 不能假设挂载点就是 /Volumes/DITER：残留的悬空符号链接会让新卷挂成 "DITER 1"，
     // 硬编码路径会导致后续 mkdir 报 ENOENT。必须探测实际挂载点。
     return waitMountPoint(device.id);
@@ -81,9 +82,9 @@ async function partition(device, emit) {
     if (!r.ok) {
       const msg = (r.stderr || r.stdout || '').trim();
       const hint = /lock|busy|use|占用|锁定|正在使用|in use/i.test(msg)
-        ? '目标 U 盘可能被其它程序占用，请关闭占用它的窗口（如资源管理器、杀毒软件、其他分区工具）后重试。'
-        : '目标 U 盘可能为只读（写保护开关）或已损坏，请检查后重试。';
-      throw new Error(`diskpart 失败：${msg}。${hint}`);
+        ? t('errDiskpartBusy')
+        : t('errDiskpartOther');
+      throw new Error(t('errDiskpart', { msg, hint }));
     }
     // 找到 DITER 的盘符
     const q = await run('powershell.exe', [
@@ -92,7 +93,7 @@ async function partition(device, emit) {
       `(Get-Volume -FileSystemLabel DITER).DriveLetter`,
     ]);
     const letter = (q.stdout || '').trim();
-    if (!letter) throw new Error('分区完成但未获得盘符');
+    if (!letter) throw new Error(t('errNoDriveLetter'));
     return `${letter}:\\`;
   }
   // Linux: MBR + 单 FAT32 分区 + boot 标志
@@ -100,10 +101,10 @@ async function partition(device, emit) {
     '-c',
     `echo 'label: dos\n,,c,*' | sfdisk --force /dev/${device.id}`,
   ], { timeout: 120000 });
-  if (!sf.ok) throw new Error('sfdisk 失败：' + sf.stderr.trim());
+  if (!sf.ok) throw new Error(t('errSfdisk', { msg: sf.stderr.trim() }));
   await run('sh', ['-c', `partprobe /dev/${device.id} || true; sleep 1`]);
   const mk = await run('mkfs.vfat', ['-F', '32', '-n', 'DITER', `/dev/${device.id}1`], { timeout: 300000 });
-  if (!mk.ok) throw new Error('mkfs.vfat 失败：' + mk.stderr.trim());
+  if (!mk.ok) throw new Error(t('errMkfs', { msg: mk.stderr.trim() }));
   const mp = fs.mkdtempSync('/tmp/diter-dst-');
   await run('mount', [`/dev/${device.id}1`, mp]);
   return mp;
@@ -179,7 +180,7 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
   const skipped = { n: 0 };
   const entries = walk(srcRoot, srcRoot, [], '', new Set(), skipped);
   if (skipped.n > 0) {
-    emit({ message: `跳过 ${skipped.n} 个无法解析的链接/项目（不影响启动盘制作）` });
+    emit({ message: t('msgSkippedLinks', { n: skipped.n }) });
   }
   const total = entries.reduce((s, e) => s + e.size, 0);
   const dirs = entries.filter((e) => e.dir).sort((a, b) => a.rel.length - b.rel.length);
@@ -208,7 +209,7 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
       const buf = Buffer.allocUnsafe(8 * 1024 * 1024);
       let read = 0;
       while (read < e.size) {
-        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
         // 顺序读源文件、顺序写目标文件（不传 position），让内核维护偏移，
         // 减少每次 pread/pwrite 的系统调用开销，尤其利于 FAT32 上的大文件连续写入。
         const { bytesRead } = await inFd.read(buf, 0, Math.min(buf.length, e.size - read));
@@ -216,7 +217,7 @@ async function copyTree(srcRoot, dstRoot, { emit, signal, skip = new Set(), onBy
         let off = 0;
         while (off < bytesRead) {
           const { bytesWritten } = await outFd.write(buf, off, bytesRead - off);
-          if (bytesWritten <= 0) throw Object.assign(new Error('写入目标失败，设备可能已断开'), { code: 'EIO' });
+          if (bytesWritten <= 0) throw Object.assign(new Error(t('errWriteTarget')), { code: 'EIO' });
           off += bytesWritten;
         }
         read += bytesRead;
@@ -256,12 +257,12 @@ async function write(ctx) {
   if (preMounted?.mountPoint) {
     // 主进程（用户会话）已挂载好，直接读挂载点
     mount = { mountPoint: preMounted.mountPoint, devEntry: preMounted.devEntry, cleanup: async () => {} };
-    emit({ pct: 0.01, phase: '准备', message: '读取已挂载的镜像内容' });
+    emit({ pct: 0.01, phase: t('phasePrepare'), message: t('msgReadMounted') });
   } else {
     try {
       mount = await mountIso(imagePath);
     } catch (e) {
-      const err = new Error(`无法读取 Windows 镜像：${e.message}（若为 UDF 镜像，请确认系统支持 UDF 挂载）`);
+      const err = new Error(t('errMountImage', { msg: e.message }));
       err.code = 'MOUNT_FAILED';
       throw err;
     }
@@ -274,7 +275,7 @@ async function write(ctx) {
   };
 
   try {
-    emit({ pct: 0.02, phase: '分区', message: '建立 FAT32 活动分区' });
+    emit({ pct: 0.02, phase: t('phasePartition'), message: t('msgBuildFat32') });
     // macOS 对可移动宗卷有 TCC 隐私保护：文件级写入必须留在用户会话（可弹授权框），
     // 只有分区/格式化这类磁盘管理操作交给 root 助手。非 root 且有 rootOps 时走委托。
     const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
@@ -284,7 +285,7 @@ async function write(ctx) {
         const r = await rootOps.format({ deviceId: device.id });
         dstRoot = r.mountPoint;
       } catch (e) {
-        throw new Error('格式化 U 盘失败：' + e.message);
+        throw new Error(t('errFormatTarget', { msg: e.message }));
       }
     } else {
       dstRoot = await partition(device, emit);
@@ -300,14 +301,11 @@ async function write(ctx) {
       if (size > WIM_LIMIT) {
         const hasWimlib = await hasCommand('wimlib-imagex');
         if (!hasWimlib) {
-          const err = new Error(
-            `install.wim 为 ${(size / 1e9).toFixed(1)} GB，超过 FAT32 单文件 4 GB 上限，需要 wimlib 拆分。` +
-              `请先安装：macOS → brew install wimlib；Debian/Ubuntu → sudo apt install wimlib-tools；Windows → 使用内置 DISM 自动完成。`
-          );
+          const err = new Error(t('errWimTooLarge', { size: (size / 1e9).toFixed(1) }));
           err.code = 'WIM_TOO_LARGE';
           throw err;
         }
-        emit({ pct: 0.08, phase: '拷贝', message: 'install.wim 超过 4 GB，正在拆分为 install.swm' });
+        emit({ pct: 0.08, phase: t('phaseCopy'), message: t('msgSplittingStart') });
         await spawnStep(
           'wimlib-imagex',
           ['split', wim, path.join(dstRoot, 'sources', 'install.swm'), '3800'],
@@ -315,21 +313,21 @@ async function write(ctx) {
             signal,
             onLine: (l) => {
               const m = /(\d+)%/.exec(l);
-              if (m) emit({ pct: 0.1, phase: '拷贝', message: `拆分 install.wim ${m[1]}%` });
+              if (m) emit({ pct: 0.1, phase: t('phaseCopy'), message: t('msgSplittingWim', { pct: m[1] }) });
             },
             onStderr: (l) => {
               const m = /(\d+)%/.exec(l);
-              if (m) emit({ pct: 0.1, phase: '拷贝', message: `拆分 install.wim ${m[1]}%` });
+              if (m) emit({ pct: 0.1, phase: t('phaseCopy'), message: t('msgSplittingWim', { pct: m[1] }) });
             },
           }
         );
         skip.add('sources/install.wim');
-        splitNote = '（install.wim 已拆分为 install.swm，误报请忽略）';
+        splitNote = t('msgSplitNote');
       }
     }
     void esd;
 
-    emit({ pct: 0.14, phase: '拷贝', message: '正在复制安装文件' });
+    emit({ pct: 0.14, phase: t('phaseCopy'), message: t('msgCopyingFiles') });
     let copied;
     try {
       copied = await copyTree(mount.mountPoint, dstRoot, {
@@ -341,8 +339,8 @@ async function write(ctx) {
           const p = total > 0 ? done / total : 0;
           emit({
             pct: 0.14 + p * 0.78,
-            phase: '拷贝',
-            message: `复制 ${(done / 1073741824).toFixed(2)} / ${(total / 1073741824).toFixed(2)} GB`,
+            phase: t('phaseCopy'),
+            message: t('msgCopying', { done: (done / 1073741824).toFixed(2), total: (total / 1073741824).toFixed(2) }),
             bytesWritten: done,
             totalBytes: total,
             speed,
@@ -353,9 +351,7 @@ async function write(ctx) {
     } catch (e) {
       if (e.code === 'EPERM' || e.code === 'EACCES') {
         // macOS 隐私保护（TCC）会拦截对可移动宗卷的文件级写入
-        const err = new Error(
-          'macOS 隐私保护阻止了写入：请打开 系统设置 → 隐私与安全性 → 文件和文件夹（或完全磁盘访问权限），允许 Diter 访问「可移动宗卷」，然后重试。'
-        );
+        const err = new Error(t('errMacTcc'));
         err.code = e.code;
         throw err;
       }
@@ -363,7 +359,7 @@ async function write(ctx) {
     }
 
     /* ---- 引导 ---- */
-    emit({ pct: 0.94, phase: '引导', message: '正在写入启动代码' });
+    emit({ pct: 0.94, phase: t('phaseBoot'), message: t('msgWritingBoot') });
     let legacyOk = false;
     if (process.platform === 'win32') {
       const bootsect = path.join(mount.mountPoint, 'boot', 'bootsect.exe');
@@ -381,7 +377,7 @@ async function write(ctx) {
       legacyOk = r.ok;
     }
 
-    emit({ pct: 0.99, phase: '收尾', message: '刷新缓存' });
+    emit({ pct: 0.99, phase: t('phaseFinalize'), message: t('msgFlush') });
     await run('sync', []).catch(() => {});
     await cleanup();
 
@@ -391,8 +387,8 @@ async function write(ctx) {
       bytes: copied.bytes,
       legacyBoot: legacyOk,
       note: legacyOk
-        ? 'UEFI 与 Legacy BIOS 双模式可启动。'
-        : `UEFI 模式可启动。Legacy BIOS 引导扇区未写入（缺少 ms-sys / bootsect）${splitNote}`,
+        ? t('noteUefiLegacy')
+        : t('noteUefiOnly') + splitNote,
     };
   } catch (e) {
     await cleanup();

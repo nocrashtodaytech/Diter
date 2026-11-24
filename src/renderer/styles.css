@@ -698,6 +698,25 @@ body.is-mac .panel {
   color: var(--danger);
   background: var(--danger-soft);
 }
+.unlock-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 9px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: none;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color 0.15s, background 0.15s;
+}
+.unlock-btn:hover {
+  color: #fff;
+  background: var(--accent);
+}
 .device-size {
   font-family: var(--mono);
   font-size: 12.5px;

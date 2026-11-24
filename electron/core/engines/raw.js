@@ -15,6 +15,7 @@ const path = require('path');
 const os = require('os');
 const crypto = require('crypto');
 const { RateMeter } = require('../util');
+const { t } = require('../i18n');
 
 const CHUNK = 64 * 1024 * 1024;
 // 原始设备按 4096 字节块对齐（macOS rdisk / 现代 SSD 的物理块大小）
@@ -25,20 +26,20 @@ const PAR_CHUNK = 8 * 1024 * 1024;
 /** 把底层 fs 错误映射成用户可读的中文提示，避免只看到 errno */
 function writeErr(e, written) {
   if (!e || e.code === 'CANCELLED' || e.code === 'OPEN_FAILED') return e;
-  const map = {
-    EBUSY: '目标设备仍被系统占用（未卸载成功），请拔插 U 盘后重试',
-    EACCES: '权限不足：需要管理员授权才能写入磁盘，请先点击右上角「需要授权」',
-    EPERM: '权限不足：需要管理员授权才能写入磁盘',
-    EROFS: '设备为只读（可能开启了物理写保护开关）',
-    EINVAL: '目标设备不接受该写入方式，请确认设备未被占用',
-    ENOSPC: '目标设备容量不足，请更换更大的 U 盘',
-    EIO: '写入时发生 I/O 错误，U 盘可能存在坏块或已损坏',
+  const keyMap = {
+    EBUSY: 'errEbusy',
+    EACCES: 'errEacces',
+    EPERM: 'errEperm',
+    EROFS: 'errErofs',
+    EINVAL: 'errEinval',
+    ENOSPC: 'errEnospc',
+    EIO: 'errEio',
   };
-  const hint = e.code ? map[e.code] : null;
-  if (hint) {
-    e.message = hint;
+  const key = e.code ? keyMap[e.code] : null;
+  if (key) {
+    e.message = t(key);
   } else if (e.code && (!e.message || /^[A-Z]+:/.test(e.message))) {
-    e.message = `写入 ${Math.floor(written / 1048576)} MB 后失败（${e.code}）：${e.message || '未知错误'}`;
+    e.message = t('msgWriteFailedAt', { mb: Math.floor(written / 1048576), code: e.code, msg: e.message || 'Unknown error' });
   }
   return e;
 }
@@ -63,11 +64,11 @@ async function writeRaw(o) {
     await src.close();
     const hint =
       e.code === 'EACCES' || e.code === 'EPERM'
-        ? '权限不足，需要管理员权限'
+        ? t('errPermission')
         : e.code === 'EBUSY'
-          ? '设备仍被占用（未卸载成功），请拔插 U 盘后重试'
+          ? t('errBusy')
           : e.message;
-    const err = new Error(`无法打开目标设备 ${targetNode}：${hint}`);
+    const err = new Error(t('msgOpenDeviceFailed', { node: targetNode, hint }));
     err.code = 'OPEN_FAILED';
     throw err;
   }
@@ -92,7 +93,7 @@ async function writeRaw(o) {
   try {
     while (written < total) {
       if (signal?.aborted) {
-        const err = new Error('用户已取消');
+        const err = new Error(t('msgCancelled'));
         err.code = 'CANCELLED';
         throw err;
       }
@@ -119,7 +120,7 @@ async function writeRaw(o) {
         // 会退化为 seek+write 或产生额外开销；顺序 write 是 rdisk 的标准用法。
         const { bytesWritten } = await dst.write(data, off, toWrite - off);
         if (bytesWritten <= 0) {
-          const err = new Error('写入返回 0 字节，设备可能已断开');
+          const err = new Error(t('msgDeviceDisconnected'));
           err.code = 'EIO';
           throw err;
         }
@@ -178,7 +179,7 @@ async function writeRawParallel({ sourcePath, targetNode, total, onProgress, sig
     try {
       let pos = seg.start;
       while (pos < seg.end) {
-        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
         const want = Math.min(PAR_CHUNK, seg.end - pos);
         const { bytesRead } = await src.read(buf, 0, want, pos);
         if (bytesRead <= 0) break;
@@ -193,9 +194,9 @@ async function writeRawParallel({ sourcePath, targetNode, total, onProgress, sig
         }
         let off = 0;
         while (off < toWrite) {
-          if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+          if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
           const { bytesWritten: bw } = await dst.write(data, off, toWrite - off, pos + off);
-          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节，设备可能已断开'), { code: 'EIO' });
+          if (bw <= 0) throw Object.assign(new Error(t('msgDeviceDisconnected')), { code: 'EIO' });
           off += bw;
         }
         written += bytesRead;
@@ -259,7 +260,7 @@ async function hashPathParallel(p, total, { signal, threads = 1, onProgress } = 
       const buf = Buffer.allocUnsafe(PAR_CHUNK);
       let pos = seg.start;
       while (pos < seg.end) {
-        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
         // 只读到 total，不读末尾对齐补零区
         const upTo = Math.min(PAR_CHUNK, seg.end - pos, Math.max(0, total - pos));
         if (upTo <= 0) break;
@@ -366,12 +367,12 @@ async function eraseRaw({ targetNode, totalBytes, signal, onProgress, threads = 
     try {
       let pos = seg.start;
       while (pos < seg.end) {
-        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
         const want = Math.min(PAR_CHUNK, seg.end - pos);
         let off = 0;
         while (off < want) {
           const { bytesWritten: bw } = await dst.write(fillBuf, 0, want - off, pos + off);
-          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节，设备可能已断开'), { code: 'EIO' });
+          if (bw <= 0) throw Object.assign(new Error(t('msgDeviceDisconnected')), { code: 'EIO' });
           off += bw;
         }
         written += want;
@@ -427,7 +428,7 @@ async function backupRaw({ sourceNode, targetPath, totalBytes, signal, onProgres
       const buf = Buffer.allocUnsafe(PAR_CHUNK);
       let pos = seg.start;
       while (pos < seg.end) {
-        if (signal?.aborted) throw Object.assign(new Error('用户已取消'), { code: 'CANCELLED' });
+        if (signal?.aborted) throw Object.assign(new Error(t('msgCancelled')), { code: 'CANCELLED' });
         const want = Math.min(PAR_CHUNK, seg.end - pos);
         // 只读真实数据，不读末尾对齐补零区
         const upTo = Math.min(want, Math.max(0, total - pos));
@@ -437,7 +438,7 @@ async function backupRaw({ sourceNode, targetPath, totalBytes, signal, onProgres
         let off = 0;
         while (off < bytesRead) {
           const { bytesWritten: bw } = await dst.write(buf, off, bytesRead - off, pos + off);
-          if (bw <= 0) throw Object.assign(new Error('写入返回 0 字节'), { code: 'EIO' });
+          if (bw <= 0) throw Object.assign(new Error(t('msgDeviceDisconnected')), { code: 'EIO' });
           off += bw;
         }
         written += bytesRead;

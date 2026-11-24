@@ -179,7 +179,7 @@ function listSync() {
       volumes,
       partitionScheme,
       writable: !/^1$/.test(rd(`${dir}/ro`)),
-      detail: `${isUsb ? 'USB' : isMmc ? 'MMC/SD' : '内建'} · ${removable ? '可移动' : '固定'}`,
+      detail: `${isUsb ? 'USB' : isMmc ? 'MMC/SD' : 'Internal'} · ${removable ? 'Removable' : 'Fixed'}`,
       platform: 'linux',
       serial: rd(`${dir}/device/serial`) || '',
     });

@@ -15,6 +15,7 @@ const rawEngine = require('./engines/raw');
 const darwinEngine = require('./engines/darwin');
 const winMediaEngine = require('./engines/windows-media');
 const linuxEngine = require('./engines/linux');
+const { t } = require('./i18n');
 
 const jobs = new Map();
 
@@ -32,15 +33,14 @@ function resolveThreads(threads) {
 function engineFor(targetOs, imageInfo) {
   const host = process.platform;
   if (targetOs === 'macos') {
-    if (host === 'darwin') return { engine: darwinEngine, label: 'macOS 原生（createinstallmedia / asr / raw）' };
-    // 非 macOS 宿主：仅当镜像是自带分区表的整盘映像时才可能成功
+    if (host === 'darwin') return { engine: darwinEngine, label: t('engMac') };
     if (imageInfo?.structures?.apfs || imageInfo?.structures?.hfs || imageInfo?.structures?.gpt) {
-      return { engine: linuxEngine, label: '整盘映像写入（非 macOS 宿主，无法设置 bless）', warn: '在非 macOS 系统上写入的 macOS 启动盘通常无法被 Apple 硬件引导，仅供实验。' };
+      return { engine: linuxEngine, label: t('engMacOther'), warn: t('engMacWarn') };
     }
-    return { engine: null, unsupported: 'macOS 安装镜像只能在 macOS 上制作（Apple 安装器依赖 createinstallmedia 与 HFS/APFS 原生写入）。' };
+    return { engine: null, unsupported: t('engMacUnsupported') };
   }
-  if (targetOs === 'windows') return { engine: winMediaEngine, label: '文件级安装盘（分区 + FAT32 + 引导）' };
-  return { engine: linuxEngine, label: '整盘字节级写入' };
+  if (targetOs === 'windows') return { engine: winMediaEngine, label: t('engWin') };
+  return { engine: linuxEngine, label: t('engLinux') };
 }
 
 /**
@@ -72,7 +72,7 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
   (async () => {
     try {
       /* ---------- 1. 安全复核（不可跳过） ---------- */
-      send({ kind: 'phase', phase: '安全检查', pct: 0.005, message: '正在复核目标设备身份' });
+      send({ kind: 'phase', phase: t('phaseSecurity'), pct: 0.005, message: t('msgCheckDevice') });
       const mod = devices.impl();
       const fresh = await safety.revalidate(mod, device.id, device);
       safety.assertWritable(fresh, total, options);
@@ -85,7 +85,7 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
       }
       if (pick.warn) send({ kind: 'log', message: pick.warn });
 
-      send({ kind: 'phase', phase: '准备', pct: 0.01, message: pick.label });
+      send({ kind: 'phase', phase: t('phasePrepare'), pct: 0.01, message: pick.label });
 
       /* ---------- 2. 执行引擎 ---------- */
       const result = await pick.engine.write({
@@ -100,7 +100,7 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
           const pct = typeof e.pct === 'number' ? Math.min(0.99, e.pct) : undefined;
           send({
             kind: 'progress',
-            phase: e.phase || '写入',
+            phase: e.phase || t('phaseWrite'),
             message: e.message || '',
             pct: pct === undefined ? undefined : pct * scale,
             speed: e.speed,
@@ -114,7 +114,7 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
       /* ---------- 3. 校验 ---------- */
       let verification = null;
       if (options.verify && result.mode === 'raw') {
-        send({ kind: 'phase', phase: '校验', pct: 0.93, message: '回读设备并比对 SHA-256' });
+        send({ kind: 'phase', phase: t('phaseVerify'), pct: 0.93, message: t('msgVerifying') });
         try {
           const v = await rawEngine.verifyRaw({
             sourcePath: imagePath,
@@ -125,9 +125,9 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
             onProgress: (p) =>
               send({
                 kind: 'progress',
-                phase: '校验',
+                phase: t('phaseVerify'),
                 pct: 0.93 + (p.read / Math.max(1, p.total)) * 0.06,
-                message: `校验数据 ${Math.round((p.read / Math.max(1, p.total)) * 100)}%`,
+                message: t('msgVerifyProgress', { pct: Math.round((p.read / Math.max(1, p.total)) * 100) }),
               }),
           });
           verification = v;
@@ -137,7 +137,7 @@ async function start({ imagePath, imageInfo, device, options = {}, emit, preMoun
       }
 
       /* ---------- 4. 收尾 ---------- */
-      send({ kind: 'phase', phase: '完成', pct: 1, message: '写入完成' });
+      send({ kind: 'phase', phase: t('phaseDone'), pct: 1, message: t('msgWriteComplete') });
       send({
         kind: 'done',
         pct: 1,
@@ -186,7 +186,7 @@ async function erase({ device, options = {}, emit }) {
 
   (async () => {
     try {
-      send({ kind: 'phase', phase: '安全检查', pct: 0.01, message: '正在复核目标设备身份' });
+      send({ kind: 'phase', phase: t('phaseSecurity'), pct: 0.01, message: t('msgCheckDevice') });
       const mod = devices.impl();
       const fresh = await safety.revalidate(mod, device.id, device);
       safety.assertWritable(fresh, 0, options);
@@ -196,9 +196,9 @@ async function erase({ device, options = {}, emit }) {
       try {
         await unmount(device.id);
       } catch (e) {
-        send({ kind: 'log', message: `卸载提示：${e.message || '目标设备可能仍被占用'}` });
+        send({ kind: 'log', message: t('msgUnmountHint', { msg: e.message || t('errBusy') }) });
       }
-      send({ kind: 'phase', phase: '擦除', pct: 0.02, message: options.method === 'random' ? '随机数据覆盖写入' : '零覆盖写入' });
+      send({ kind: 'phase', phase: t('phaseErase'), pct: 0.02, message: options.method === 'random' ? t('msgRandomFill') : t('msgZeroFill') });
       const result = await rawEngine.eraseRaw({
         targetNode,
         totalBytes: total,
@@ -208,9 +208,9 @@ async function erase({ device, options = {}, emit }) {
         onProgress: (pr) =>
           send({
             kind: 'progress',
-            phase: '擦除',
+            phase: t('phaseErase'),
             pct: 0.02 + (pr.bytesWritten / Math.max(1, pr.totalBytes)) * 0.97,
-            message: `擦除 ${(pr.bytesWritten / 1073741824).toFixed(2)} / ${(pr.totalBytes / 1073741824).toFixed(2)} GB`,
+            message: t('msgErasing', { done: (pr.bytesWritten / 1073741824).toFixed(2), total: (pr.totalBytes / 1073741824).toFixed(2) }),
             speed: pr.speed,
             eta: pr.eta,
             bytesWritten: pr.bytesWritten,
@@ -250,7 +250,7 @@ async function backup({ device, targetPath, options = {}, emit }) {
 
   (async () => {
     try {
-      send({ kind: 'phase', phase: '安全检查', pct: 0.01, message: '正在复核目标设备身份' });
+      send({ kind: 'phase', phase: t('phaseSecurity'), pct: 0.01, message: t('msgCheckDevice') });
       const mod = devices.impl();
       const fresh = await safety.revalidate(mod, device.id, device);
       safety.assertWritable(fresh, 0, options);
@@ -260,14 +260,14 @@ async function backup({ device, targetPath, options = {}, emit }) {
       try {
         await unmount(device.id);
       } catch (e) {
-        send({ kind: 'log', message: `卸载提示：${e.message || '目标设备可能仍被占用'}` });
+        send({ kind: 'log', message: t('msgUnmountHint', { msg: e.message || t('errBusy') }) });
       }
-      send({ kind: 'phase', phase: '备份', pct: 0.02, message: '正在读取设备并写入镜像文件' });
+      send({ kind: 'phase', phase: t('phaseBackup'), pct: 0.02, message: t('msgReadingDevice') });
       // 预先创建目标文件：backupRaw 各 worker 以 r+ 打开，要求文件已存在（否则 ENOENT）
       try {
         fs.closeSync(fs.openSync(targetPath, 'w'));
       } catch (e) {
-        throw Object.assign(new Error('无法创建备份文件：' + e.message), { code: 'OPEN_FAILED' });
+        throw Object.assign(new Error(t('errCreateBackup', { msg: e.message })), { code: 'OPEN_FAILED' });
       }
       const result = await rawEngine.backupRaw({
         sourceNode,
@@ -278,9 +278,9 @@ async function backup({ device, targetPath, options = {}, emit }) {
         onProgress: (pr) =>
           send({
             kind: 'progress',
-            phase: '备份',
+            phase: t('phaseBackup'),
             pct: 0.02 + (pr.bytesWritten / Math.max(1, pr.totalBytes)) * 0.97,
-            message: `备份 ${(pr.bytesWritten / 1073741824).toFixed(2)} / ${(pr.totalBytes / 1073741824).toFixed(2)} GB`,
+            message: t('msgBackingUp', { done: (pr.bytesWritten / 1073741824).toFixed(2), total: (pr.totalBytes / 1073741824).toFixed(2) }),
             speed: pr.speed,
             eta: pr.eta,
             bytesWritten: pr.bytesWritten,

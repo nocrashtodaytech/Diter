@@ -28,8 +28,9 @@ async function list(opts = {}) {
     return { ok: false, error: e.message, devices: [], platform: process.platform };
   }
 
+  const unlockedSet = new Set(opts.unlockedIds || []);
   const devices = (res.devices || []).map((d) => {
-    const verdict = safety.evaluate(d, opts.imageSize || 0, opts);
+    const verdict = safety.evaluate(d, opts.imageSize || 0, { ...opts, unlocked: unlockedSet.has(d.id) });
     return {
       ...d,
       verdict,

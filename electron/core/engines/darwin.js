@@ -15,6 +15,7 @@ const path = require('path');
 const { run, waitMountPoint } = require('../util');
 const { spawnStep, pctFrom } = require('./spawn');
 const raw = require('./raw');
+const { t } = require('../i18n');
 
 async function mountImage(imagePath) {
   const r = await run(
@@ -88,23 +89,23 @@ async function plan(imagePath, imageInfo, preMounted) {
 /** createinstallmedia 的输出解析：Erasing → Copying → Making bootable */
 function cicProgress(emit, base, span) {
   let stage = 0.02;
-  let phase = '准备';
+  let phase = t('phasePrepare');
   return (line) => {
     const low = line.toLowerCase();
     if (low.includes('erasing disk')) {
-      phase = '格式化目标盘';
+      phase = t('msgErasingDisk');
       stage = 0.02;
       span = 0.12;
     } else if (low.includes('copying to disk')) {
-      phase = '复制系统文件';
+      phase = t('msgCopyingSystem');
       stage = 0.14;
       span = 0.78;
     } else if (low.includes('making disk bootable') || low.includes('setting up the boot')) {
-      phase = '写入引导信息';
+      phase = t('msgMakingBootable');
       stage = 0.93;
       span = 0.06;
     } else if (low.includes('copying booter') || low.includes('creating')) {
-      phase = '收尾';
+      phase = t('phaseFinalize');
       stage = 0.96;
       span = 0.03;
     }
@@ -126,7 +127,7 @@ async function write(ctx) {
 
   /* ---------------- A. createinstallmedia ---------------- */
   if (p.mode === 'createinstallmedia') {
-    emit({ phase: '准备', message: '清除目标磁盘分区表', pct: 0.01 });
+    emit({ phase: t('phasePrepare'), message: t('msgClearPartition'), pct: 0.01 });
     const name = 'DITER';
     await run('diskutil', ['unmountDisk', 'force', device.id], { timeout: 60000 });
     // createinstallmedia 需要目标为已挂载卷，因此先格式化为 HFS+ 再写入
@@ -134,25 +135,25 @@ async function write(ctx) {
 
     // 探测实际挂载点：残留的 /Volumes/DITER 悬空符号链接会让新卷挂成 "DITER 1"
     const mountPoint = await waitMountPoint(device.id);
-    emit({ phase: '准备', message: `调用 ${path.basename(p.appPath || imagePath)} 自带安装工具`, pct: 0.03 });
+    emit({ phase: t('phasePrepare'), message: t('msgCallInstaller', { app: path.basename(p.appPath || imagePath) }), pct: 0.03 });
     const parse = cicProgress(emit, 0.03, 0.95);
     await spawnStep(p.createinstallmedia, ['--volume', mountPoint, '--nointeraction'], {
       signal,
       onLine: parse,
       onStderr: parse,
     });
-    emit({ pct: 0.97, phase: '收尾', message: '刷新卷信息' });
-    return { mode: 'createinstallmedia', note: '已由 Apple 官方 createinstallmedia 生成，原生支持安装与恢复启动。' };
+    emit({ pct: 0.97, phase: t('phaseFinalize'), message: t('msgFlush') });
+    return { mode: 'createinstallmedia', note: t('noteCic') };
   }
 
   /* ---------------- B. asr 恢复 ---------------- */
   if (p.mode === 'asr') {
-    emit({ phase: '准备', message: '卸载目标磁盘', pct: 0.01 });
+    emit({ phase: t('phasePrepare'), message: t('msgUnmounting'), pct: 0.01 });
     await run('diskutil', ['unmountDisk', 'force', device.id], { timeout: 60000 });
-    emit({ phase: '格式化', message: '建立 GPT + HFS+ 分区', pct: 0.03 });
+    emit({ phase: t('phaseFormat'), message: t('msgBuildGptHfs'), pct: 0.03 });
     await run('diskutil', ['eraseDisk', 'JHFS+', 'DITER', 'GPT', device.id], { timeout: 300000 });
 
-    emit({ phase: '恢复镜像', message: '正在还原 BaseSystem', pct: 0.06 });
+    emit({ phase: t('phaseRestore'), message: t('msgRestoringBaseSystem'), pct: 0.06 });
     await spawnStep(
       'asr',
       ['restore', '--source', p.source, '--target', `/dev/${device.id}`, '--erase', '--noverify', '--noprompt'],
@@ -160,26 +161,26 @@ async function write(ctx) {
         signal,
         onLine: (line) => {
           const v = pctFrom(line);
-          if (v !== null) emit({ pct: 0.06 + (v / 100) * 0.8, message: `恢复镜像 ${Math.round(v)}%` });
+          if (v !== null) emit({ pct: 0.06 + (v / 100) * 0.8, message: t('msgRestoreProgress', { pct: Math.round(v) }) });
         },
         onStderr: (line) => {
           const v = pctFrom(line);
-          if (v !== null) emit({ pct: 0.06 + (v / 100) * 0.8, message: `恢复镜像 ${Math.round(v)}%` });
+          if (v !== null) emit({ pct: 0.06 + (v / 100) * 0.8, message: t('msgRestoreProgress', { pct: Math.round(v) }) });
         },
       }
     );
 
     if (p.packages) {
-      emit({ phase: '复制安装包', message: '复制 Packages（老版本布局必需）', pct: 0.9 });
+      emit({ phase: t('phaseCopyPackages'), message: t('msgCopyPackages'), pct: 0.9 });
       await run('sh', ['-c', `ditto "${p.packages}" "/Volumes/DITER/Packages"`], { timeout: 3600000 });
     }
-    emit({ phase: '收尾', message: '设置启动磁盘', pct: 0.99 });
+    emit({ phase: t('phaseFinalize'), message: t('msgSetBoot'), pct: 0.99 });
     await run('bless', ['--setBoot', '--legacy', `/dev/${device.id}`], { timeout: 60000 });
-    return { mode: 'asr', note: '老版本 InstallESD 布局，已用 asr 整卷恢复并 bless 引导。' };
+    return { mode: 'asr', note: t('noteAsr') };
   }
 
   /* ---------------- C. raw ---------------- */
-  emit({ phase: '准备', message: '卸载目标磁盘', pct: 0.01 });
+  emit({ phase: t('phasePrepare'), message: t('msgUnmounting'), pct: 0.01 });
   await run('diskutil', ['unmountDisk', 'force', device.id], { timeout: 60000 });
 
   const total = imageInfo?.size || fs.statSync(imagePath).size;
@@ -192,14 +193,14 @@ async function write(ctx) {
     onProgress: (pr) =>
       emit({
         pct: 0.03 + (pr.bytesWritten / pr.totalBytes) * 0.95,
-        message: `写入 ${(pr.bytesWritten / 1073741824).toFixed(2)} / ${(pr.totalBytes / 1073741824).toFixed(2)} GB`,
+        message: t('msgWriting', { done: (pr.bytesWritten / 1073741824).toFixed(2), total: (pr.totalBytes / 1073741824).toFixed(2) }),
         speed: pr.speed,
         eta: pr.eta,
         bytesWritten: pr.bytesWritten,
         totalBytes: pr.totalBytes,
       }),
   });
-  return { mode: 'raw', note: '镜像自带分区与引导，已逐字节写入。', bytesWritten: res.bytesWritten };
+  return { mode: 'raw', note: t('noteRaw'), bytesWritten: res.bytesWritten };
 }
 
 async function detach(mount) {

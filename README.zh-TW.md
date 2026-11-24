@@ -25,8 +25,14 @@ Diter 依映像檔語意分派引擎，而不是一律 `dd`：
 | 目標 | 策略 |
 |---|---|
 | **Windows ISO** | 分割 → FAT32 → 複製檔案 → 開機程式（`install.wim > 4GB` 自動用 wimlib 拆分） |
-| **macOS** | 三級策略：`createinstallmedia` → `asr` → `raw`，涵蓋 10.10 到最新版本 |
+| **macOS** | 三級策略：`createinstallmedia` → `asr` → `raw`，適用於 macOS 11 及更高版本 |
 | **Linux** | 整碟位元組級寫入，可選 `casper-rw` 持久化分割區 |
+
+## 系統需求
+
+- **macOS**：11.0（Big Sur）或更高版本 —— 已實測。
+- **Windows**：Windows 10 / 11（x64）。提供 NSIS 安裝版；核心寫入路徑仍在驗證中，如遇問題歡迎回報。
+- **Linux**：任意較新的 x86-64 發行版。
 
 ## 亮點
 

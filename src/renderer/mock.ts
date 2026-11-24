@@ -106,7 +106,7 @@ export function createMock(): DiterApi {
   let timer: any = null;
   const panelListeners = { settings: new Set<() => void>(), about: new Set<() => void>(), update: new Set<() => void>(), history: new Set<() => void>() };
   const updateListeners = new Set<(p: any) => void>();
-  let mockLang: Lang = 'zh';
+  let mockLang: Lang = 'en';
 
   return {
     isDesktop: false,
@@ -211,6 +211,9 @@ export function createMock(): DiterApi {
       return '/Users/ryan/Downloads/disk-backup.img';
     },
     async requestElevation() {
+      return { ok: true };
+    },
+    async unlockDevice() {
       return { ok: true };
     },
     async assertWritable() {
