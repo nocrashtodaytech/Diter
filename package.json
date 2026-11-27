@@ -59,7 +59,16 @@
     },
     "linux": {
       "target": ["AppImage", "deb"],
-      "category": "Utility"
+      "category": "Utility",
+      "icon": "assets/icon.png",
+      "maintainer": "nocrashtodaytech <nocrashtodaytech@users.noreply.github.com>",
+      "synopsis": "Cross-platform bootable USB drive creator",
+      "description": "Diter creates bootable USB drives from Windows, Linux and macOS install images, with a strong safety layer that locks your system disk.",
+      "artifactName": "Diter-${version}-${arch}.${ext}"
+    },
+    "deb": {
+      "depends": ["policykit-1"],
+      "recommends": ["gdisk"]
     }
   }
 }

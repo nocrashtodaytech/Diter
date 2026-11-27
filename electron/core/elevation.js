@@ -92,10 +92,17 @@ function relaunchElevated() {
     return;
   }
 
-  // Linux
-  run('pkexec', [execPath, '--elevated'], { timeout: 120000 }).then((r) => {
-    if (!r.ok) lastError = (r.stderr || r.stdout || '提权失败').trim();
-  });
+  if (process.platform === 'linux') {
+    const helperEntry = path.join(appPath, 'electron', 'core', 'helper-entry.js');
+    // 同 macOS：用 ELECTRON_RUN_AS_NODE=1 以纯 Node 模式启动助手，而非启动完整 Electron。
+    // 原因：1) root 下 Electron 的 Chromium 沙箱会直接崩溃（需 --no-sandbox）；
+    //       2) pkexec 默认清空环境变量，root 进程访问不到当前用户的 X11/Wayland 会话，GUI 起不来。
+    // pkexec 会忽略父进程 env，故用 `env` 显式注入 ELECTRON_RUN_AS_NODE=1。
+    run('pkexec', ['env', 'ELECTRON_RUN_AS_NODE=1', execPath, helperEntry], { timeout: 120000 }).then((r) => {
+      if (!r.ok) lastError = (r.stderr || r.stdout || '提权失败').trim();
+    });
+    return;
+  }
 }
 
 function quote(s) {
